@@ -27,7 +27,7 @@ class BraTS2019(Dataset):
                 self.image_list = f.readlines()
 
         self.image_list = [item.replace('\n', '').split(",")[0] for item in self.image_list]
-        if num is not None:
+        if num is not None and split == "train":
             self.image_list = self.image_list[:num]
         print("total {} samples".format(len(self.image_list)))
 

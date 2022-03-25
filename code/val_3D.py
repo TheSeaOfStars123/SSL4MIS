@@ -105,3 +105,4 @@ def test_all_case(net, base_dir, test_list="full_test.list", num_classes=4, patc
             total_metric[i-1, :] += cal_metric(label == i, prediction == i)
     print("Validation end")
     return total_metric / len(image_list)
+

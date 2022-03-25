@@ -4,28 +4,22 @@ import os
 import random
 import shutil
 import sys
-import time
 
 import numpy as np
 import torch
 import torch.backends.cudnn as cudnn
-import torch.nn as nn
-import torch.nn.functional as F
 import torch.optim as optim
 from tensorboardX import SummaryWriter
-from torch.nn import BCEWithLogitsLoss
 from torch.nn.modules.loss import CrossEntropyLoss
 from torch.utils.data import DataLoader
 from torchvision import transforms
 from torchvision.utils import make_grid
 from tqdm import tqdm
 
-from dataloaders import utils
-from dataloaders.brats2019 import (BraTS2019, CenterCrop, RandomCrop,
-                                   RandomRotFlip, ToTensor,
-                                   TwoStreamBatchSampler)
+from dataloaders.brats2019 import (BraTS2019, RandomCrop,
+                                   RandomRotFlip, ToTensor)
 from networks.net_factory_3d import net_factory_3d
-from utils import losses, metrics, ramps
+from utils import losses
 from val_3D import test_all_case
 
 parser = argparse.ArgumentParser()
@@ -43,14 +37,17 @@ parser.add_argument('--deterministic', type=int,  default=1,
                     help='whether use deterministic training')
 parser.add_argument('--base_lr', type=float,  default=0.01,
                     help='segmentation network learning rate')
-parser.add_argument('--patch_size', type=list,  default=[96, 96, 96],
+parser.add_argument('-patch_size', '--list', type=str, default="96，96，96",
                     help='patch size of network input')
 parser.add_argument('--seed', type=int,  default=1337, help='random seed')
 parser.add_argument('--labeled_num', type=int, default=25,
                     help='labeled data')
 
 args = parser.parse_args()
+args.patch_size = [int(item) for item in args.list.split(',')]
 
+def worker_init_fn(worker_id):
+    random.seed(args.seed + worker_id)
 
 def train(args, snapshot_path):
     base_lr = args.base_lr
@@ -68,11 +65,8 @@ def train(args, snapshot_path):
                              ToTensor(),
                          ]))
 
-    def worker_init_fn(worker_id):
-        random.seed(args.seed + worker_id)
-
     trainloader = DataLoader(db_train, batch_size=batch_size, shuffle=True,
-                             num_workers=16, pin_memory=True, worker_init_fn=worker_init_fn)
+                             num_workers=8, pin_memory=True, worker_init_fn=worker_init_fn)
 
     model.train()
 
@@ -197,7 +191,7 @@ if __name__ == "__main__":
                     shutil.ignore_patterns(['.git', '__pycache__']))
 
     logging.basicConfig(filename=snapshot_path+"/log.txt", level=logging.INFO,
-                        format='[%(asctime)s.%(msecs)03d] %(message)s', datefmt='%H:%M:%S')
+                        format='[%(asctime)s.%(msecs)03d] %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
     logging.getLogger().addHandler(logging.StreamHandler(sys.stdout))
     logging.info(str(args))
     train(args, snapshot_path)
