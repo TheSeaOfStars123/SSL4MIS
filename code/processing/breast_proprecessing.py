@@ -292,30 +292,27 @@ def h5ToNII():
         print(first_level_key)
 
 '''
-    取出要预测的病变区域，向四个方向延申64像素，得到voi区域=128*128*8
+    取出要预测的病变区域，向四个方向延申64像素，得到voi区域=128*128*64
 '''
 def crop_mass_area():
-    for i in range(77, 78):
-        folder_path = "/Users/zyc/Desktop/breast-dataset-training-validation/Breast_TrainingData/Breast_Training_%03d" % (i)
+    for i in range(1, 309):
+        folder_path = "D:/Desktop/BREAST/BREAST/breast-dataset-training-validation/Breast_TrainingData/Breast_Training_%03d" % (i)
         if(os.path.exists(folder_path)):
-            file_path = "/Users/zyc/Desktop/breast-dataset-training-validation/Breast_TrainingData/Breast_Training_%03d/Breast_Training_%03d_seg.nii" % (i, i)
-            mri_default_path = "/Users/zyc/Desktop/breast-dataset-training-validation/Breast_TrainingData/Breast_Training_%03d/Breast_Training_%03d" % (i, i)
-
+            file_path = "D:/Desktop/BREAST/BREAST/breast-dataset-training-validation/Breast_TrainingData/Breast_Training_%03d/Breast_Training_%03d_seg.nii" % (i, i)
+            mri_default_path = "D:/Desktop/BREAST/BREAST/breast-dataset-training-validation/Breast_TrainingData/Breast_Training_%03d/Breast_Training_%03d" % (i, i)
             # nilearn读取数据
             roi_img = nib.load(file_path)
             affine = roi_img
             roi_data = roi_img.get_data()
-
             # 得到有label标记的slice和总层数
             label_slice_list = []
             label_slice_sum = 0
-            print('roi data shape:', )
             for k in range(roi_data.shape[2]):
-                test_slice = roi_data[:,:,k]
+                test_slice = roi_data[:, :, k]
                 if test_slice.max() > 0:
                     label_slice_list.append(k)
                     label_slice_sum += 1
-
+            print('roi data shape:', label_slice_sum)
             # ndimage获取数组的质心
             CM = ndimage.measurements.center_of_mass(roi_data)
             # 手动调用内置函数来强制类型转换
@@ -323,21 +320,18 @@ def crop_mass_area():
             y = int(CM[1])
             z = int(CM[2])
             # 定义偏移量
-            offsetX = 100
-            offsetY = 80
-            offsetZ = 4
-
+            offsetX = 64
+            offsetY = 64
+            offsetZ = 32
             # 保存为nii文件
             # nib.Nifti1Image(voi_mri_data).to_filename('Breast_Training_002_ph2_voi.nii')
             # voi_mri_data.to_filename('Breast_Training_002_ph2_voi.nii')
             # nib.save(voi_mri_data, os.path.join(folder_path, 'Breast_Training_002_ph2_voi.nii'))
-
-
+            # 对6个阶段
             for j in range(1, 6):
                 mri_path = mri_default_path + "_ph" + str(j) + ".nii"
                 mri_img = nib.load(mri_path)
                 mri_data = mri_img.get_data()
-
                 # 三维数组的切片 mri shape -> (512, 512, 92) voi mri shape -> (128, 128, 8)
                 # 处理特殊情况
                 # 当 mri shape -> (136, 256, 256)
@@ -350,19 +344,32 @@ def crop_mass_area():
                 xshape = mri_data.shape[0]
                 # 因为图像和label在x方向上是反的mri_data = np.moveaxis(mri_data, (0, 1, 2), (2, 1, 0))
                 # 需要将图像数据进行左右反转
-                # voi_mri_data = mri_data[(xshape - x) - offsetX:(xshape - x) + offsetX, y - offsetY:y + offsetY, z - offsetZ:z + offsetZ]
-                # voi_mri_data = np.flip(voi_mri_data, axis=0)
+                # 一个example:
+                # 当x=165 y=272 z=66时 此时shape_x=512 shape_y=512 shape_z=104
+                # mri_data取[(512-165)-64:(512-165)+64, 272-64:272+64, 66-4:66+4]
+                # roi_data取[165-64:165+64, 272-64:272+64, 66-4:66+4]
 
+                # 处理要截取的层数超出总层数范围的情况：
+                # 如果z-offsetZ<0||z+offsetZ>shape_z
+                # 首先得到delta=0-(z-offsetZ)||delta=(z+offsetZ)-shape_z
+                # 重新得到质心z的层数：z+delta||z-delta
+                if z - offsetZ < 0:
+                    delta = 0 - (z - offsetZ)
+                    z = z + delta
+                elif z + offsetZ > mri_data.shape[2]:
+                    delta = z + offsetZ - mri_data.shape[2]
+                    z = z - delta
+                voi_mri_data = mri_data[(xshape - x) - offsetX:(xshape - x) + offsetX, y - offsetY:y + offsetY, z - offsetZ:z + offsetZ]
+                voi_mri_data = np.flip(voi_mri_data, axis=0)
                 # voi_mri_data = mri_data[x - offsetX:x + offsetX, y - offsetY:y + offsetY, z - offsetZ:z + offsetZ]
-
-                voi_mri_data = mri_data[(-x) - offsetX:(-x) + offsetX, (-y) - offsetY:(-y) + offsetY, z - offsetZ:z + offsetZ]
+                # voi_mri_data = mri_data[(-x) - offsetX:(-x) + offsetX, (-y) - offsetY:(-y) + offsetY, z - offsetZ:z + offsetZ]
                 pair_img = nib.Nifti1Pair(voi_mri_data, np.eye(4))
-                nib.save(pair_img, os.path.join(folder_path,'Breast_Training_%03d_ph%d_voi.nii' % (i ,j)))
+                nib.save(pair_img, os.path.join(folder_path, 'Breast_Training_%03d_ph%d_voi_debug.nii' % (i, j)))
 
             # 对label三维数组同样切片
             voi_data = roi_data[x - offsetX:x + offsetX, y - offsetY:y + offsetY, z - offsetZ:z + offsetZ]
             pair_img = nib.Nifti1Pair(voi_data, np.eye(4))
-            nib.save(pair_img, os.path.join(folder_path, 'Breast_Training_%03d_seg_voi.nii' % (i)))
+            nib.save(pair_img, os.path.join(folder_path, 'Breast_Training_%03d_seg_voi_debug.nii' % (i)))
 
             # 输出切片后大小
             print("mri shape ->", mri_data.shape)
@@ -373,10 +380,10 @@ def crop_mass_area():
             return '('+' '.join(str(e) for e in list1)+')'
 
         # 每处理完一个病人的病例进行csv记录
-        add_data = [{'Number': 'Breast_Training_%03d' % i, 'CM': list_or_tuple_to_string(CM), 'Shape:': list_or_tuple_to_string(mri_data.shape), 'labelSlice': list_or_tuple_to_string(label_slice_list), 'labelSlicesum':label_slice_sum}]
-        df = pd.DataFrame(add_data)
-        df.to_csv(output_label_info, index=None,
-                  mode='a', header=None)
+        # add_data = [{'Number': 'Breast_Training_%03d' % i, 'CM': list_or_tuple_to_string(CM), 'Shape:': list_or_tuple_to_string(mri_data.shape), 'labelSlice': list_or_tuple_to_string(label_slice_list), 'labelSlicesum':label_slice_sum}]
+        # df = pd.DataFrame(add_data)
+        # df.to_csv(output_label_info, index=None,
+        #           mode='a', header=None)
 
 '''
     将.nii转化为.h5文件
@@ -384,7 +391,7 @@ def crop_mass_area():
     先选取作为示例
     一个h5中，包含一个ph4阶段image和label
 '''
-data_types = ['_ph4_voi.nii']
+data_types = ['_ph4_voi_debug.nii']
 def nii2h5():
     # 修改h5存放路径
     h5py_path = 'D:\Desktop\BREAST\BREAST\data'
@@ -400,7 +407,7 @@ def nii2h5():
         img = np.stack(images)
         img = np.moveaxis(img, (0, 1, 2, 3), (0, 3, 2, 1))
         img = img[0, :, :]
-        mask_path = os.path.join(root_path, id_, id_ + '_seg_voi.nii')
+        mask_path = os.path.join(root_path, id_, id_ + '_seg_voi_debug.nii')
         mask = sitk.GetArrayFromImage(sitk.ReadImage(mask_path))
         mask = np.clip(mask.astype(np.uint8), 0, 1).astype(np.float32)
         mask = np.clip(mask, 0, 1)
@@ -415,4 +422,5 @@ def nii2h5():
     print("Converted total {} niis to h5 files".format(id_num))
 
 if __name__ == '__main__':
+    # crop_mass_area()
     nii2h5()

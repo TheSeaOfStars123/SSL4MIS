@@ -36,6 +36,7 @@ class BraTS2019(Dataset):
 
     def __getitem__(self, idx):
         image_name = self.image_list[idx]
+        # print('get h5py file name:', self._base_dir + "/data/{}.h5".format(image_name))
         h5f = h5py.File(self._base_dir + "/data/{}.h5".format(image_name), 'r')
         image = h5f['image'][:]
         label = h5f['label'][:]

@@ -1,0 +1,58 @@
+basic:
+  # experiment_name
+  exp: Breast_Fully_Supervised
+  # whether use deterministic training
+  deterministic: true
+  # random seed
+  seed: 1337
+  # labeled data
+  labeled_num: 25
+model:
+  name: unet_3D
+  in_channels: 1
+  out_channels:
+  class_num: 2
+loss:
+  name:
+optimizer:
+  learning_rate:
+  weight_decay:
+eval_metric:
+  name:
+lr_scheduler:
+  name:
+  factor:
+  patience:
+trainer:
+  checkpoint_dir:
+  pre_trained:
+  validate_after_iters:
+  max_num_epochs:
+  max_num_iterations:
+loaders:
+  num_workers:
+  batch_size:
+  raw_internal_path:
+  label_internal_path:
+  train:
+    file_paths:
+    slice_builder:
+      name:
+      patch_shape:
+      stride_shape:
+    transformer:
+      raw:
+        - name:
+      label:
+        - name:
+  val:
+    file_paths:
+      slice_builder:
+        name:
+        patch_shape:
+        stride_shape:
+      transformer:
+        raw:
+          - name:
+        label:
+          - name:
