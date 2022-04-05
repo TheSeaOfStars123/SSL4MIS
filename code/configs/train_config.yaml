@@ -7,6 +7,7 @@ basic:
   seed: 1337
   # labeled data
   labeled_num: 25
+  device: GPU
 model:
   name: unet_3D
   in_channels: 1
@@ -15,7 +16,7 @@ model:
 loss:
   name:
 optimizer:
-  learning_rate:
+  learning_rate: 0.01
   weight_decay:
 eval_metric:
   name:
@@ -24,18 +25,22 @@ lr_scheduler:
   factor:
   patience:
 trainer:
-  checkpoint_dir:
-  pre_trained:
-  validate_after_iters:
-  max_num_epochs:
-  max_num_iterations:
+  checkpoint_dir: CHECKPOINT_DIR
+  resume: null
+  pre_trained: null
+  validate_after_iters: 2000
+  log_after_iters: 100
+  max_num_epochs: 200
+  max_num_iterations: 30000
 loaders:
-  num_workers:
-  batch_size:
+  dataset: StandardHDF5Dataset
+  num_workers: 1
+  batch_size: 1
   raw_internal_path:
   label_internal_path:
   train:
     file_paths:
+      - TRAIN_DIR
     slice_builder:
       name:
       patch_shape:
@@ -47,6 +52,7 @@ loaders:
         - name:
   val:
     file_paths:
+      - TRAIN_DIR
       slice_builder:
         name:
         patch_shape:
