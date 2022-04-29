@@ -16,6 +16,8 @@ import SimpleITK as sitk
 import h5py
 import scipy.ndimage as ndimage
 
+from nipype.interfaces.ants import N4BiasFieldCorrection
+
 '''
     文件路径定义
 '''
@@ -295,6 +297,9 @@ def h5ToNII():
     取出要预测的病变区域，向四个方向延申64像素，得到voi区域=128*128*64
 '''
 def crop_mass_area():
+
+    # ERROR_LIST = [10, 59, 64, 67, 73, 76, 85, 162, 165, 175, 259]
+    # for i in ERROR_LIST:
     for i in range(1, 309):
         folder_path = "D:/Desktop/BREAST/BREAST/breast-dataset-training-validation/Breast_TrainingData/Breast_Training_%03d" % (i)
         if(os.path.exists(folder_path)):
@@ -320,9 +325,9 @@ def crop_mass_area():
             y = int(CM[1])
             z = int(CM[2])
             # 定义偏移量
-            offsetX = 64
-            offsetY = 64
-            offsetZ = 32
+            offsetX = 96
+            offsetY = 96
+            offsetZ = 24
             # 保存为nii文件
             # nib.Nifti1Image(voi_mri_data).to_filename('Breast_Training_002_ph2_voi.nii')
             # voi_mri_data.to_filename('Breast_Training_002_ph2_voi.nii')
@@ -332,7 +337,7 @@ def crop_mass_area():
                 mri_path = mri_default_path + "_ph" + str(j) + ".nii"
                 mri_img = nib.load(mri_path)
                 mri_data = mri_img.get_data()
-                # 三维数组的切片 mri shape -> (512, 512, 92) voi mri shape -> (128, 128, 8)
+                # 三维数组的切片 mri shape -> (512, 512, 92) voi mri shape -> (256, 256, 64)/(255, 255, 63)
                 # 处理特殊情况
                 # 当 mri shape -> (136, 256, 256)
                 # 当 roi shape -> (256, 256, 136)
@@ -353,23 +358,36 @@ def crop_mass_area():
                 # 如果z-offsetZ<0||z+offsetZ>shape_z
                 # 首先得到delta=0-(z-offsetZ)||delta=(z+offsetZ)-shape_z
                 # 重新得到质心z的层数：z+delta||z-delta
+                if (xshape - x) - offsetX < 0:
+                    delta = 0 - ((xshape - x) - offsetX)
+                    x = x - delta
+                elif (xshape - x) + offsetX > mri_data.shape[0]:
+                    delta = (xshape - x) + offsetX - mri_data.shape[0]
+                    x = x + delta
+                if y - offsetY < 0:
+                    delta = 0 - (y - offsetY)
+                    y = y + delta
+                elif y + offsetY > mri_data.shape[1]:
+                    delta = y + offsetY - mri_data.shape[1]
+                    y = y - delta
                 if z - offsetZ < 0:
                     delta = 0 - (z - offsetZ)
                     z = z + delta
                 elif z + offsetZ > mri_data.shape[2]:
                     delta = z + offsetZ - mri_data.shape[2]
                     z = z - delta
-                voi_mri_data = mri_data[(xshape - x) - offsetX:(xshape - x) + offsetX, y - offsetY:y + offsetY, z - offsetZ:z + offsetZ]
+                voi_mri_data = mri_data[(xshape - x) - offsetX:(xshape - x) + offsetX,
+                               y - offsetY:y + offsetY, z - offsetZ:z + offsetZ]
                 voi_mri_data = np.flip(voi_mri_data, axis=0)
                 # voi_mri_data = mri_data[x - offsetX:x + offsetX, y - offsetY:y + offsetY, z - offsetZ:z + offsetZ]
                 # voi_mri_data = mri_data[(-x) - offsetX:(-x) + offsetX, (-y) - offsetY:(-y) + offsetY, z - offsetZ:z + offsetZ]
                 pair_img = nib.Nifti1Pair(voi_mri_data, np.eye(4))
-                nib.save(pair_img, os.path.join(folder_path, 'Breast_Training_%03d_ph%d_voi_debug.nii' % (i, j)))
+                nib.save(pair_img, os.path.join(folder_path, 'Breast_Training_%03d_ph%d_voi_192x192x48.nii' % (i, j)))
 
             # 对label三维数组同样切片
             voi_data = roi_data[x - offsetX:x + offsetX, y - offsetY:y + offsetY, z - offsetZ:z + offsetZ]
             pair_img = nib.Nifti1Pair(voi_data, np.eye(4))
-            nib.save(pair_img, os.path.join(folder_path, 'Breast_Training_%03d_seg_voi_debug.nii' % (i)))
+            nib.save(pair_img, os.path.join(folder_path, 'Breast_Training_%03d_seg_voi_192x192x48.nii' % (i)))
 
             # 输出切片后大小
             print("mri shape ->", mri_data.shape)
@@ -380,47 +398,117 @@ def crop_mass_area():
             return '('+' '.join(str(e) for e in list1)+')'
 
         # 每处理完一个病人的病例进行csv记录
-        # add_data = [{'Number': 'Breast_Training_%03d' % i, 'CM': list_or_tuple_to_string(CM), 'Shape:': list_or_tuple_to_string(mri_data.shape), 'labelSlice': list_or_tuple_to_string(label_slice_list), 'labelSlicesum':label_slice_sum}]
-        # df = pd.DataFrame(add_data)
-        # df.to_csv(output_label_info, index=None,
-        #           mode='a', header=None)
+        add_data = [{'Number': 'Breast_Training_%03d' % i, 'CM': list_or_tuple_to_string(CM), 'Shape:': list_or_tuple_to_string(mri_data.shape), 'labelSlice': list_or_tuple_to_string(label_slice_list), 'labelSlicesum': label_slice_sum, 'voiDataShape': voi_mri_data.shape}]
+        df = pd.DataFrame(add_data)
+        df.to_csv(output_label_info, index=None, mode='a', header=None)
 
 '''
+    for seg h5 dataset
     将.nii转化为.h5文件
     输入训练集的原图和label，输出h5文件
     先选取作为示例
-    一个h5中，包含一个ph4阶段image和label
+    一个h5中，包含一个ph1/ph3/ph5阶段image和label
+    "image":(3, 128, 128, 64)
+    "label":(1, 128, 128, 64)
 '''
-data_types = ['_ph4_voi_debug.nii']
-def nii2h5():
+data_types = ['_ph1_voi_debug.nii', '_ph3_voi_debug.nii', '_ph5_voi_debug.nii']
+def nii2h5_seg():
     # 修改h5存放路径
     h5py_path = 'D:\Desktop\BREAST\BREAST\data'
+    # h5py_path = 'D:/Desktop/BREAST/BREAST/breast-dataset-training-validation-h5/Breast_TrainingData'
     id_num = 0
     for id_ in sorted(os.listdir(root_path)):
-        # 载入所有模态
+        # 载入所有image模态
         images = []
         for data_type in data_types:
             img_path = os.path.join(root_path, id_, id_ + data_type)
-            img = sitk.GetArrayFromImage(sitk.ReadImage(img_path))
-            img = (img - img.min()) / (img.max() - img.min())
+            img = sitk.GetArrayFromImage(sitk.ReadImage(img_path))  # (64, 128, 128)
+            # img = (img - img.min()) / (img.max() - img.min())
             images.append(img)
-        img = np.stack(images)
-        img = np.moveaxis(img, (0, 1, 2, 3), (0, 3, 2, 1))
-        img = img[0, :, :]
+        img = np.stack(images)  # (3, 64, 128, 128)
+        img = np.moveaxis(img, (0, 1, 2, 3), (0, 3, 2, 1))  # (3, 128, 128, 64)
+        # 载入label模态
         mask_path = os.path.join(root_path, id_, id_ + '_seg_voi_debug.nii')
-        mask = sitk.GetArrayFromImage(sitk.ReadImage(mask_path))
-        mask = np.clip(mask.astype(np.uint8), 0, 1).astype(np.float32)
-        mask = np.clip(mask, 0, 1)
-        mask = np.moveaxis(mask, (0, 1, 2), (2, 1, 0))
-        if img.shape != mask.shape:
+        mask = sitk.GetArrayFromImage(sitk.ReadImage(mask_path))  # (64, 128, 128)
+        # mask = np.clip(mask.astype(np.uint8), 0, 1).astype(np.float32)
+        # mask = np.clip(mask, 0, 1)
+        mask = mask[None, :, :, :]  # (1, 128, 128, 64)
+        mask = np.moveaxis(mask, (0, 1, 2, 3), (0, 3, 2, 1))
+        print('img.shape[1:3]:', img.shape[1:4], mask.shape[1:4])
+        if img.shape[1:4] != mask.shape[1:4]:
             print("Error")
-        f = h5py.File(os.path.join(h5py_path, id_ + '_ph4_seg.h5'), 'w')
+        f = h5py.File(os.path.join(h5py_path, id_ + '_ph135_seg.h5'), 'w')
         f.create_dataset('image', data=img, compression="gzip")
         f.create_dataset('label', data=mask, compression="gzip")
         f.close()
         id_num += 1
     print("Converted total {} niis to h5 files".format(id_num))
 
+'''
+    for classification h5 dataset
+    将.nii转化为.h5文件
+    输入训练集的原图和label，输出h5文件
+    先选取作为示例
+    一个h5中，包含一个ph1/ph3/ph5阶段image和label
+    "image":(3, 128, 128, 64)
+    "label":(1,) 0-pCR 1-non-pCR
+'''
+def nii2h5_classification():
+    # 使用df读取Breast_MR_list.xlsx文件
+    pCR_info_df = pd.read_csv('D:/Desktop/BREAST/BREAST/breast-dataset-training-validation/Breast_meta_data/Breast_MR_list_ori.csv')
+    name_mapping_df = pd.read_csv(name_mapping_path)
+    name_mapping_df.rename({'Number': 'ID'}, axis=1, inplace=True)
+    df = pCR_info_df.merge(name_mapping_df, on="ID", how="right")
+    # 修改h5存放路径
+    h5py_path = 'D:\Desktop\BREAST\BREAST\data'
+    # h5py_path = 'D:/Desktop/BREAST/BREAST/breast-dataset-training-validation-h5/Breast_TrainingData'
+    id_num = 0
+    for id_ in sorted(os.listdir(root_path)):
+        # 载入所有image模态
+        images = []
+        for data_type in data_types:
+            img_path = os.path.join(root_path, id_, id_ + data_type)
+            img = sitk.GetArrayFromImage(sitk.ReadImage(img_path))  # (64, 128, 128)
+            # img = (img - img.min()) / (img.max() - img.min())
+            images.append(img)
+        img = np.stack(images)  # (3, 64, 128, 128)
+        # img = np.moveaxis(img, (0, 1, 2, 3), (0, 3, 2, 1))  # (3, 128, 128, 64)
+        # 载入label模态
+        # 根据Breast_subject_ID返回ID
+        index = df['Breast_subject_ID'][df['Breast_subject_ID'].values == id_].index
+        # 根据ID返回“病理完全缓解”
+        pCR_label = (df['病理完全缓解'][index.values[0]], )   # 0/1
+        f = h5py.File(os.path.join(h5py_path, id_ + '_ph135_cls.h5'), 'w')
+        f.create_dataset('image', data=img, compression="gzip")
+        f.create_dataset('label', data=pCR_label, compression="gzip")
+        f.close()
+        id_num += 1
+    print("Converted total {} niis to h5 files".format(id_num))
+
+# 使用N4BiasFieldCorrection可以校正偏差域
+def correct_bias():
+    for i in range(1, 309):
+        folder_path = "D:/Desktop/BREAST/BREAST/breast-dataset-training-validation/Breast_TrainingData/Breast_Training_%03d" % (i)
+        if(os.path.exists(folder_path)):
+            mri_default_path = "D:/Desktop/BREAST/BREAST/breast-dataset-training-validation/Breast_TrainingData/Breast_Training_%03d/Breast_Training_%03d" % (i, i)
+            correct = N4BiasFieldCorrection()
+            # 对6个阶段
+            for j in range(1, 6):
+                mri_path = mri_default_path + "_ph" + str(j) + ".nii"
+                out_mri_path = mri_default_path + "_ph" + str(j) + "_N4Bias"+".nii"
+                # 使用N4BiasFieldCorrection校正MRI图像的偏置场
+                correct.inputs.input_image = mri_path
+                correct.inputs.output_image = out_mri_path
+                done = correct.run()
+                # done.outputs.output_image
+                # input_image = sitk.ReadImage(mri_path, sitk.sitkFloat64)
+                # output_image = sitk.N4BiasFieldCorrection(input_image, input_image > 0)
+                # sitk.WriteImage(output_image, out_mri_path)
+
+
 if __name__ == '__main__':
+    correct_bias()
     # crop_mass_area()
-    nii2h5()
+    # nii2h5_seg()
+    # nii2h5_classification()
+

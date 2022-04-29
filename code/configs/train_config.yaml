@@ -1,6 +1,6 @@
 basic:
   # experiment_name
-  exp: Breast_Fully_Supervised
+  exp: Breast_Fully_Supervised/pCR-classification
   # whether use deterministic training
   deterministic: true
   # random seed
@@ -10,8 +10,8 @@ basic:
   device: GPU
 model:
   name: unet_3D
-  in_channels: 1
-  out_channels:
+  in_channels: 3
+  out_channels: 1
   class_num: 2
 loss:
   name:
@@ -36,29 +36,77 @@ loaders:
   dataset: StandardHDF5Dataset
   num_workers: 1
   batch_size: 1
-  raw_internal_path:
-  label_internal_path:
+  raw_internal_path: /image
+  label_internal_path: /label
   train:
-    file_paths:
-      - TRAIN_DIR
+    file_paths: D:\Desktop\BREAST\BREAST\breast-dataset-training-validation-h5\classification\Breast_TrainingData
     slice_builder:
-      name:
-      patch_shape:
-      stride_shape:
+      name: FilterSliceBuilder
+      patch_shape: [85, 85, 21]
+      stride_shape: [85, 85, 21]
+      # when patch shape [64 64 48], patch voi size is 196608 , and voi size is above 15~200~3000, so non_ignore_counts should > 0.001
+      threshold: 0.001
+      slack_acceptance: 0.01
+
     transformer:
       raw:
-        - name:
+      # do not change name
+        - name: Standardize
+        - name: RandomFlip
+        - name: RandomRotate90
+        - name: RandomRotate
+            # rotate only in YX plane due to anisotropy
+          axes: [ [ 1, 0 ] ]
+          angle_spectrum: 45
+          mode: reflect
+        - name: ElasticDeformation
+          spline_order: 3
+        - name: GaussianBlur3D
+          execution_probability: 0.5
+        - name: AdditiveGaussianNoise
+          execution_probability: 0.2
+        - name: AdditivePoissonNoise
+          execution_probability: 0.2
+        - name: ToTensor
+          expand_dims: true
       label:
-        - name:
+#        - name: RandomFlip
+#        - name: RandomRotate90
+#        - name: RandomRotate
+#          # rotate only in YX plane due to anisotropy
+#          axes: [ [ 1, 0 ] ]
+#          angle_spectrum: 45
+#          mode: reflect
+#        - name: ElasticDeformation
+#          spline_order: 0
+##        - name: StandardLabelToBoundary
+#          # append original ground truth labels to the last channel (to be able to compute the eval metric)
+##          append_label: false
+        - name: ToTensor
+          expand_dims: false
   val:
-    file_paths:
-      - TRAIN_DIR
-      slice_builder:
-        name:
-        patch_shape:
-        stride_shape:
-      transformer:
-        raw:
-          - name:
-        label:
-          - name:
+    file_paths: D:\Desktop\BREAST\BREAST\breast-dataset-training-validation-h5\classification\Breast_ValidationData
+    # SliceBuilder configuration, i.e. how to iterate over the input volume patch-by-patch
+    slice_builder:
+      name: FilterSliceBuilder
+      # train patch size given to the network (adapt to fit in your GPU mem, generally the bigger patch the better)
+      patch_shape: [64, 64, 32]
+      # train stride between patches
+      stride_shape: [64, 64, 32]
+      # minimum volume of the labels in the patch
+      # when patch shape [64 64 48], patch voi size is 196608 , and voi size is above 15~200~3000, so non_ignore_counts should > 0.001
+      threshold: 0.001
+      # probability of accepting patches which do not fulfil the threshold criterion
+      slack_acceptance: 0.01
+
+    # data augmentation
+    transformer:
+      raw:
+        - name: Standardize
+        - name: ToTensor
+          expand_dims: true
+      label:
+        - name: StandardLabelToBoundary
+          append_label: false
+        - name: ToTensor
+          expand_dims: false

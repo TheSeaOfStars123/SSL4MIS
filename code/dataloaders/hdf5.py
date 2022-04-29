@@ -5,11 +5,10 @@ from itertools import chain
 import h5py
 import numpy as np
 
-import pytorch3dunet.augment.transforms as transforms
-from pytorch3dunet.datasets.utils import get_slice_builder, ConfigDataset, calculate_stats
-from pytorch3dunet.unet3d.utils import get_logger
+import augment.transforms as transforms
+from dataloaders.utils import get_slice_builder, ConfigDataset, calculate_stats
 
-logger = get_logger('HDF5Dataset')
+# logger = get_logger('HDF5Dataset')
 
 
 class AbstractHDF5Dataset(ConfigDataset):
@@ -76,7 +75,9 @@ class AbstractHDF5Dataset(ConfigDataset):
             else:
                 self.weight_map = None
 
-            self._check_volume_sizes(self.raw, self.label)
+            skip_volume_sizes = True            # zyc
+            if not skip_volume_sizes:           # zyc
+                self._check_volume_sizes(self.raw, self.label)
         else:
             # 'test' phase used only for predictions so ignore the label dataset
             self.label = None
@@ -91,15 +92,18 @@ class AbstractHDF5Dataset(ConfigDataset):
                     self.raw = np.stack(channels)
                 else:
                     self.raw = np.pad(self.raw, pad_width=pad_width, mode='reflect')
+        if self.label.ndim != 4:                # zyc
+            slice_builder = get_slice_builder(self.raw, None, self.weight_map, slice_builder_config)  # zyc
+        else:
+            # build slice indices for raw and label data sets
+            slice_builder = get_slice_builder(self.raw, self.label, self.weight_map, slice_builder_config)
 
-        # build slice indices for raw and label data sets
-        slice_builder = get_slice_builder(self.raw, self.label, self.weight_map, slice_builder_config)
         self.raw_slices = slice_builder.raw_slices
         self.label_slices = slice_builder.label_slices
         self.weight_slices = slice_builder.weight_slices
 
         self.patch_count = len(self.raw_slices)
-        logger.info(f'Number of patches: {self.patch_count}')
+        # logger.info(f'Number of patches: {self.patch_count}')
 
     @staticmethod
     def fetch_and_check(input_file, internal_path):
@@ -125,8 +129,11 @@ class AbstractHDF5Dataset(ConfigDataset):
             return raw_patch_transformed, raw_idx
         else:
             # get the slice for a given index 'idx'
-            label_idx = self.label_slices[idx]
-            label_patch_transformed = self.label_transform(self.label[label_idx])
+            if self.label_slices is None:
+                label_patch_transformed = self.label_transform(self.label)
+            else:
+                label_idx = self.label_slices[idx]
+                label_patch_transformed = self.label_transform(self.label[label_idx])
             if self.weight_map is not None:
                 weight_idx = self.weight_slices[idx]
                 weight_patch_transformed = self.weight_transform(self.weight_map[weight_idx])
@@ -170,7 +177,7 @@ class AbstractHDF5Dataset(ConfigDataset):
         datasets = []
         for file_path in file_paths:
             try:
-                logger.info(f'Loading {phase} set from: {file_path}...')
+                # logger.info(f'Loading {phase} set from: {file_path}...')
                 dataset = cls(file_path=file_path,
                               phase=phase,
                               slice_builder_config=slice_builder_config,
@@ -182,21 +189,23 @@ class AbstractHDF5Dataset(ConfigDataset):
                               global_normalization=dataset_config.get('global_normalization', None))
                 datasets.append(dataset)
             except Exception:
-                logger.error(f'Skipping {phase} set: {file_path}', exc_info=True)
+                print(f'Skipping {phase} set: {file_path}')
+                # logger.error(f'Skipping {phase} set: {file_path}', exc_info=True)
         return datasets
 
     @staticmethod
     def traverse_h5_paths(file_paths):
-        assert isinstance(file_paths, list)
+        # assert isinstance(file_paths, list)
         results = []
-        for file_path in file_paths:
-            if os.path.isdir(file_path):
+        paths = os.listdir(file_paths)
+        for file_path in paths:
+            if os.path.isdir(os.path.join(file_paths, file_path)):
                 # if file path is a directory take all H5 files in that directory
-                iters = [glob.glob(os.path.join(file_path, ext)) for ext in ['*.h5', '*.hdf', '*.hdf5', '*.hd5']]
+                iters = [glob.glob(os.path.join(file_paths, file_path, ext)) for ext in ['*.h5', '*.hdf', '*.hdf5', '*.hd5']]
                 for fp in chain(*iters):
                     results.append(fp)
             else:
-                results.append(file_path)
+                results.append(os.path.join(file_paths, file_path))
         return results
 
 
@@ -240,7 +249,7 @@ class LazyHDF5Dataset(AbstractHDF5Dataset):
                          weight_internal_path=weight_internal_path,
                          global_normalization=global_normalization)
 
-        logger.info("Using modified HDF5Dataset!")
+        # logger.info("Using modified HDF5Dataset!")
 
     @staticmethod
     def create_h5_file(file_path):
