@@ -18,13 +18,17 @@ import scipy.ndimage as ndimage
 
 from nipype.interfaces.ants import N4BiasFieldCorrection
 
+import radiomics.featureextractor as FEE
+from radiomics.imageoperations import getWaveletImage, getLoGImage
+from radiomics.firstorder import RadiomicsFirstOrder
+from dicom2nifti.exceptions import ConversionError
 '''
     文件路径定义
 '''
 default_prefix = 'D:/Desktop/BREAST/BREAST/'
 name_mapping_path = default_prefix + 'breast-dataset-training-validation/Breast_meta_data/breast_name_mapping.csv'
-default_directory = '/Volumes/Elements/breastMR_202003_sort'
-fune_directory = '/Volumes/Elements/breast_dataset_patient'
+default_directory = 'F:/breastMR_202003_sort'
+fune_directory = 'F:/breast_dataset_patient'
 output_label_info = 'D:/Desktop/BREAST/BREAST/breast-dataset-training-validation/Breast_meta_data/output_label_info.csv'
 
 root_path = 'D:/Desktop/BREAST/BREAST/breast-dataset-training-validation/Breast_TrainingData'
@@ -120,7 +124,7 @@ def listDir(folder_path):
 
 #.dicom转换为.nii
 def dicom2nii(original_dicom_directory: str, output_file: str):
-    dicom2nifti.dicom_series_to_nifti(original_dicom_directory, output_file, reorient_nifti=True)
+    dicom2nifti.dicom_series_to_nifti(original_dicom_directory, output_file, reorient_nifti=False)
 
 def dicom2nii2(original_dicom_directory: str, output_file: str):
     reader = sitk.ImageSeriesReader()
@@ -134,147 +138,129 @@ def dicom2nii2(original_dicom_directory: str, output_file: str):
     sitk.WriteImage(image2,output_file) #这里可以直接换成image2 这样就保存了原来的数据成了nii格式了。
 
 def breast_dicom2nii():
-    name_mapping_df = pd.read_csv(name_mapping_path)
-    # print(name_mapping_df.head())
-    # print(name_mapping_df.columns)
-    # print(name_mapping_df.index)
-    i = 76
+    # 使用df读取Breast_MR_list.xlsx文件
+    pCR_info_df = pd.read_csv(
+        'D:/Desktop/BREAST/BREAST/breast-dataset-training-validation/Breast_meta_data/Breast_MR_list_update.csv')
+    dir_list = pCR_info_df["影像号"].astype(str) + " " +pCR_info_df['病人姓名'].astype(str)
+    mass_labe_name_list = pCR_info_df['label名称']
     slice = 0
-    isAddMetaInfo = False
+    # isAddMetaInfo = False
     # isAddMetaInfo = True
     isCopyLabelFile = True
 
-    # dir_list = list_dir.get_file_list_by_name(default_directory)
-    dir_list = ['Breast_MR_list.xlsx', 'ICC_40cases', '21562 YU XIN', '31084 SONG XIANG QING', '77336 SUN JIAN YING',
-                '100248 MEI SHI QIN', '165299 CAI GUI E', '174948 SU JING HUA', '177914 ZHANG HUI RONG',
-                '195347 LIU ANY', '225136 CAO MENG MENG', '322144 LIU HUI QIN', '346515 MENG CUI WEN',
-                '642642 FANG YOU MEI', '665131 DUAN DONG HONG', '665237 YANG SU ZHEN', '694654 XUE YAN LI',
-                '707418 WANG WEN FANG', '745072 YIN RUN ZHEN', '748196 ZHAO YU PING', '772030 CAI HOU PING',
-                '788805 XIE GUI LAN', '800703 LIU JIE', '830377 LU LING XIA', '833326 SONG LI NING',
-                '852004 HUANG SHAO HUA', '852185 LU YAO MEI', '852186 SHEN XIU E', '860003 FAN RUN QING',
-                '862979 LV YUE YING', '863544 LIU LAN FEN', '879799 ZANG BEI NI', '883819 LIU XIU FEN',
-                '898226 XING YU QIONG', '898226 XING YU QIONG', '900167 LI BING', '917889 CAO XIU LAN', '920960 MA JIE',
-                '927644 SUN LI HONG', '927644 SUN LI HONG', '928817 SHI HONG KAI', '941546 WU YA LI', '941901 LIU JING',
-                '942872 JIA LI', '946445 HONG YAN', '946581 WANG CUI MEI', '955462 YANG JIN XIA',
-                '959673 ZHANG YUN XIA', '975944 WANG HUI TIAN', '976257 HUANG JIAN', '976314 XING RONG',
-                '979070 LI WEN YING', '979070 LI WEN YING', '979070 LI WEN YING', '981932 XIANG SONG RONG',
-                '981932 XIANG SONG RONG', '981932 XIANG SONG RONG', '983859 LIU JUN JIAN', '990856 KAN YA PING',
-                '991340 BAO ZHEN HUA', '994864 REN XIU FEN', '995892 WANG WEI QIAN', '998649 ZUO SU JIE',
-                '1000690 DONG CHUN MEI', '1003279 ZHAO YU', '1004230 XIE PING', '1005322 ZHANG QING HUI',
-                '1006632 ZHANG SHU XIAN', '1007161 LIANG ZI PING', '1008065 YE TU WEI', '1008633 ZHANG XIU FEN',
-                '1018912 WU LAN TUO YA', '1019175 LIU XUE QI', '1019317 ZHAO LI LI', '1019468 SHI HAI XIA',
-                '1019639 QIU XUE YAN', '1019992 WANG DE MEI', '1021837 YAN SHU FANG', '1022980 LI RU LIAN',
-                '1023545 LIU ZHONG XIA', '1024861 YANG GUI FEN', '1025940 CHENG YAN MING', '1028025 LIU FANG',
-                '1029015 ZHANG ZHENG TIAN', '1031147 YANG WEN', '1032369 TAN MING QIAO', '1033418 HAN JIE',
-                '1033496 ZHANG SHU LAN', '1035134 LIU XIU ZHEN', '1036891 WU LI MIN', '1037739 ZHAO DONG YAN',
-                '1038340 SHUAI DAO YUE', '1040320 LAN YU PING', '1041077 LI XI XING', '1041388 ZHAO JUN MEI',
-                '1044663 LI ZHI PING', '1046020 XIE YU LIAN', '2000306 LIN JUAN', '2000453 XU GUI LAN',
-                '2000590 Sha Sha', '2000850 WANG AI HUA', '2000983 ZHAO XIU LAN', '2000986 WU ZHAO HUA',
-                '2000999 Xiao Jian', '2001047 SI QIN', '2001186 WANG HUA', '2001426 Han Qing', '2001566 TANG SHUN',
-                '2001612 HAO AI FANG', '2001711 WANG SHU JIE', '2001730 ZHANG AI QING', '2001741 Zha Jiao E',
-                '2002000 NIE TENG TENG', '2002067 LI CUI PING', '2002132 Liu Jing Bo', '2002133 WANG LI CHUN',
-                '2002231 HU YAN HUA', '2002243 Zhao Qin', '2002351 JIANG JIN', '2002392 MA HAI LIN',
-                '2002401 ZHOU FU RONG', '2002430 ZHAO XI MIN', '2002558 XUE TAO', '2002559 LIU BO',
-                '2002565 HOU YA YING', '2002681 WANG MING XIA', '2002720 HAN MEI', '2002899 Peng Xue Hua',
-                '2003130 LIU YAN FEN', '2003202 LIANG XIAO LI', '2003279 WU LI YUN', '2003341 CHEN BI HUA',
-                '2003398 Sun Yu Feng', '2003398 Sun Yu Feng', '2003612 Wu Hui Ying', '2003632 LI CHUN LAN',
-                '2003858 Liu Gui Zhen', '2003956 He Hui Ling', '2004002 Xing Shu Min', '2004166 CHEN WEI',
-                '2004212 ZHANG XIAO QING', '2004444 ZHAO HUAN WEN', '2004515 JIANG BAO YING', '2004547 ZHANG HAI XIA',
-                '2004611 Lu Rui Hua', '2004629 ZHANG YA DONG', '2004683 YANG XIAO LING', '2004764 CUI JIN YING',
-                '2004784 Li Di Hua', '2004986 DAI HONG', '2005079 MEN FENG XIA', '2005088 JIA JUN YING',
-                '2005283 SUN LEI', '2005286 CAO LEI', '2005374 ZHU FENG YING', '2005644 ZHENG XIAO FANG',
-                '2005769 WANG SHI PING', '2005825 XIAO YING', '2005859 YANG SU YING', '2005879 Zhou Xian Jiao',
-                '2005881 GAO JIN QI', '2005962 ZHANG MEI YING', '2006005 SUN YAN JUN', '2006032 LI XIU QING',
-                '2006047 Wang Xin Rong', '2006203 HAO JIA RONG', '2006406 YANG GUO FENG', '2006703 HE RUI',
-                '2006871 WANG HUI FANG', '2006958 MIAO RONG', '2006983 Wu Ying Ni', '2007147 ZHANG XIU LAN',
-                '2007264 Zhao Ying Hui', '2007342 LI CHUN GUANG', '2007342 LI CHUN GUANG', '2007398 Wang Rong Xiu',
-                '2007445 REN BIN', '2007674 ZHANG YAN', '2007674 ZHANG YAN', '2007724 CHEN XIAO YAN',
-                '2007865 WANG SHU YUN', '2008316 BAI HE', '2008362 FU XIAO NING', '2008479 HAN XIU JING',
-                '2008484 YANG LING', '2008524 Ge Ri Le', '2008846 SONG JIE', '2009072 LIU XIU ZHEN',
-                '2009073 MU FENG YUE', '2009094 WANG JUN YING', '2009185 HU HUANG YING', '2009436 BAI GUI LAN',
-                '2009465 WANG XIU PING', '2009640 Wu Li Jun', '2009640 Wu Li Jun', '2009759 Fu Xiao Qi',
-                '2009976 YANG JI XIU', '2010187 ZHANG YAO HUA', '2010299 GUO LI MING', '2010596 ZHANG CUI PING',
-                '2010788 Zang Xiu Ju', '2010924 Lu Wang', '2010954 Wang Bao Ying', '2011476 BAI QUAN GANG',
-                '2011606 WANG JUN E', '2011613 SONG LI HUA', '2011920 MENG CAI YUN', '2012140 WEN HONG YUN',
-                '2012163 LUO JING HONG', '2012167 WU XIAO BO', '2012310 WU YUE YING', '2012446 Ma Rong',
-                '2012466 TANG XIAO YAN', '2012466 TANG XIAO YAN', '2012475 GUO BING KUN', '2012562 HUANG JING',
-                '2012568 ZHENG HAO LIAN', '2012651 Zhang Ran', '2012689 WANG CHUN MEI', '2012691 SUN LI YING',
-                '2012811 LIU LIANG', '2013062 LIU JI JUN', '2013518 Xiao Yan Ping', '2013570 YANG CHUN FENG',
-                '2013650 MENG YA QIU', '2013670 YOU XIAO BING', '2013827 Xiao Mao Xia', '2014018 WEI ZHI LI',
-                '2014095 XU YA NAN', '2014187 LIU PING', '2014192 NIU YAN LING', '2014212 CHEN CHUN XIAN',
-                '2014310 Zhao Shi Qin', '2014604 YU KE XIA', '2014905 FAN YU QIN', '2014940 TONG YUN FEI',
-                '2014951 MIAO GUI RONG', '2015027 JIA MIN', '2015034 LI JIAN PING', '2015327 WANG AI MIN',
-                '2015463 Min Qing Lan', '2015677 HE SAN NV', '2015868 Li Dong Xia', '2016225 SUN GUI LAN',
-                '2016370 WAN QIONG', '2016398 LIU YING BIN', '2016525 LIU JING', '2016540 GAO YAN LING',
-                '2016542 TAN HONG YAN', '2016728 SUN QIU PING', '2016910 TANG HUAN CHANG', '2017220 GUAN YA XIAN',
-                '2017276 ZHANG XIU FEN', '2017307 TIAN LI LI', '2017307 TIAN LI LI', '2017354 ZHANG YAN JU',
-                '2017389 XIA AI MING', '2018051 WANG GUI LING', '2018102 WANG LI JUN', '2018281 ZHAO SHAO YAN',
-                '2018412 ZHAO HONG MEI', '2018521 SU HANG', '2018662 ZHANG SHAN NA', '2018678 Wang Jing',
-                '2019229 LI WEI HONG', '2019533 FENG CHANG LI', '2019533 FENG CHANG LI', '2019812 LEI XIN',
-                '2019930 HE SU XIANG', '2020144 GUO JING', '2020482 JIA YAN PING', '2020543 MENG ZHAO HONG',
-                '2020545 LIANG XIAO YAN', '2020545 LIANG XIAO YAN', '2020662 XIONG SEN YAN', '2020707 WANG HONG YUN',
-                '2021191 WANG SHU RONG', '2021466 YANG SHU JIANG', '2021466 YANG SHU JIANG', '2021715 GUO TING TING',
-                '2022421 ZHAI YAN KUN', '2022421 ZHAI YAN KUN', '2022447 LI XIAO PING', '2022496 YUE QI',
-                '2022555 DU CHENG ZHI', '2022697 Mo Hua Ying', '2022697 Mo Hua Ying', '2022750 LV SHU YUAN',
-                '2022820 YE RUI XIA', '2022868 YANG YA YI', '2022956 TIAN XIA', '2022956 TIAN XIA',
-                '2023128 XU YING QIU', '2023263 GUO FANG', '2023544 HAN HUI', '2023675 MA SHI QIN',
-                '2023822 HOU YING HONG', '2024272 LIU XIAO MEI', '2024509 LU SHU HUA', '2024667 CHANG YA PING',
-                '2024990 PENG JING HUA', '2025054 WANG LI XIANG', '2025076 DU JIN XIA', '2025160 ZENG SHU WEN',
-                '2025331 FAN LI FANG', '2025606 XU CHUN HUA', '2025691 YANG HE', '2027534 TANG XIU YAN',
-                '2028797 ZHAO YAN HONG', '2030177 LIU HONG XIA']
-
-    for patient_name in dir_list[i + 2:]:
-        i = i + 1
-        nii_directory = default_prefix + 'breast-dataset-training-validation/Breast_TrainingData/Breast_Training_%03d' % i
+    for number in range(253, 308):
+        patient_name = dir_list.get(number)
+        mass_labe_name = mass_labe_name_list.get(number)
+        number = number + 1
+        nii_directory = default_prefix + 'breast-dataset-training-validation/Breast_TrainingData/Breast_Training_%03d' % number
         if not os.path.exists(nii_directory):
             os.makedirs(nii_directory)
         if isCopyLabelFile:
             label_nii_path = default_prefix + 'breast-dataset-training-validation/Breast_TrainingData/Breast_Training_%03d/Breast_Training_%03d_seg.nii' % (
-                i, i)
+                number, number)
             # 首先将mass-label.nii复制到目标文件夹中
-            shutil.copyfile(os.path.join(default_directory, patient_name, 'mass-label.nii'), label_nii_path)
-        j = 1
+            shutil.copyfile(os.path.join(default_directory, patient_name, mass_labe_name + "-label.nii"), label_nii_path)
+        for j in range(1, 6):
+            basic_ph_name_list = [
+                # 'Ph%d_Dyn Ax Vibrant 5p' % j,
+                'Ph%d_dyn Ax Vibrant 5p' % j,
+                'ax VIBRANT-FLEX Ph%d' % j,
+                'Ph%d:Dyn Ax Vibrant 5p' % j,
+                'Ax VIBRANT-Flex Ph%d' % j,
+                'Dyn Ax Vibrant Ph%d' % j,
+                '50%d-Ph%d/dyn Ax Vibrant 5p' % (j, j),
+                '50%d-WATER_ Ph%d/Ax VIBRANT-Flex' % (j, j),
+                '50%d-WATER_ Ph%d' % (j, j),
+                '60%d-Ph%d/Sag Vibrant SinglePhase' % (j, j),
+                '60%d-Ph%d/dyn Ax Vibrant 5p' % (j, j),
+                '60%d-WATER_ Ph%d/Sag VIBRANT-Flex' % (j, j),
+                '70%d-Ph%d/dyn Ax Vibrant 5p' % (j, j),
+                '70%d-Ph%d/Sag Vibrant SinglePhase' % (j, j),
+                'WATER_ Ph%d_Ax VIBRANT-Flex' % j,
+            ]
+            for basic_ph_name in basic_ph_name_list:
+                original_dicom_directory = os.path.join(default_directory, patient_name, basic_ph_name)
+                if os.path.exists(original_dicom_directory):
+                    basic_ph_name1 = basic_ph_name
+                    break
+
+            fune_dicom_directory = os.path.join(fune_directory, patient_name, 'ph%d' % j)
+            final_directory = os.path.join(nii_directory, 'Breast_Training_%03d_ph%d.nii' % (number, j))
+            try:
+                isAddMetaInfo = True
+                # original_dicom_directory->fune_dicom_directory
+                slice = addFloderMetaInfo(original_dicom_directory, new_folder=fune_dicom_directory)
+                # fune_dicom_directory->final_directory
+                dicom2nii(fune_dicom_directory, final_directory)
+            except (ConversionError, FileNotFoundError, ValueError):
+                print("Oops! FileNotFoundError: [WinError 3] 系统找不到指定的路径。")
+                isAddMetaInfo = False
+                slice = listDir(original_dicom_directory).__len__()
+                dicom2nii(original_dicom_directory, final_directory)
+            print(final_directory + ' Done!')
+        # 每处理完一个病人的病例进行csv记录
+        add_data = [{'Number': str(number),
+                     'File_Path': basic_ph_name1,
+                     'Patient_ID Patient_Name': patient_name,
+                     'Breast_subject_ID': 'Breast_Training_%03d' % number,
+                     'Slice': slice,
+                     'remark': isAddMetaInfo}]
+        df = pd.DataFrame(add_data)
+        df.to_csv(name_mapping_path, index=None, mode='a', header=None)
+
+
+def breast_dicom2nii_t2():
+    # 使用df读取Breast_MR_list.xlsx文件
+    pCR_info_df = pd.read_csv(
+        'D:/Desktop/BREAST/BREAST/breast-dataset-training-validation/Breast_meta_data/Breast_MR_list_update.csv')
+    dir_list = pCR_info_df["影像号"].astype(str) + " " +pCR_info_df['病人姓名'].astype(str)
+    mass_labe_name_list = pCR_info_df['label名称']
+    slice = 0
+    isAddMetaInfo = False
+    # isAddMetaInfo = True
+    isCopyLabelFile = False
+
+    for number in range(0, 308):
+        patient_name = dir_list.get(number)
+        mass_labe_name = mass_labe_name_list.get(number)
+        number = number + 1
+        nii_directory = default_prefix + 'breast-dataset-training-validation/Breast_TrainingData/Breast_Training_%03d' % number
+        if not os.path.exists(nii_directory):
+            os.makedirs(nii_directory)
+        if isCopyLabelFile:
+            label_nii_path = default_prefix + 'breast-dataset-training-validation/Breast_TrainingData/Breast_Training_%03d/Breast_Training_%03d_seg.nii' % (
+                number, number)
+            # 首先将mass-label.nii复制到目标文件夹中
+            shutil.copyfile(os.path.join(default_directory, patient_name, mass_labe_name + "-label.nii"), label_nii_path)
         basic_ph_name_list = [
-            'Ph%d_dyn Ax Vibrant 5p' % j,
-            'ax VIBRANT-FLEX Ph%d' % j,
-            'Ph%d:Dyn Ax Vibrant 5p' % j,
-            'Ax VIBRANT-Flex Ph%d' % j,
-            'Dyn Ax Vibrant Ph%d' % j,
-            '50%d-Ph%d/dyn Ax Vibrant 5p' % (j, j),
-            '50%d-WATER_ Ph%d/Ax VIBRANT-Flex' % (j, j),
-            '50%d-WATER_ Ph%d' % (j, j),
-            '60%d-Ph%d/Sag Vibrant SinglePhase' % (j, j),
-            '60%d-Ph%d/dyn Ax Vibrant 5p' % (j, j),
-            '60%d-WATER_ Ph%d/Sag VIBRANT-Flex' % (j, j),
-            '70%d-Ph%d/dyn Ax Vibrant 5p' % (j, j),
-            '70%d-Ph%d/Sag Vibrant SinglePhase' % (j, j),
-            'WATER_ Ph%d_Ax VIBRANT-Flex' % j,
+            'IDEAL T2',
         ]
         for basic_ph_name in basic_ph_name_list:
             original_dicom_directory = os.path.join(default_directory, patient_name, basic_ph_name)
             if os.path.exists(original_dicom_directory):
                 basic_ph_name1 = basic_ph_name
                 break
-        for j in range(1, 6):
-            phase_info = 'ph%d' % j
-            new_name = 'Breast_Training_%03d_ph%d.nii' % (i, j)
-            fune_dicom_directory = os.path.join(fune_directory, patient_name, phase_info)
-            if isAddMetaInfo:
-                slice = addFloderMetaInfo(original_dicom_directory, new_folder=fune_dicom_directory)
-                dicom2nii(fune_dicom_directory, os.path.join(nii_directory, new_name))
-            else:
-                dicom2nii(original_dicom_directory, os.path.join(nii_directory, new_name))
-            print(os.path.join(nii_directory, new_name) + ' Done!')
+
+        fune_dicom_directory = os.path.join(fune_directory, patient_name, 't2')
+        final_directory = os.path.join(nii_directory, 'Breast_Training_%03d_t2.nii' % (number))
+        if isAddMetaInfo:
+            # original_dicom_directory->fune_dicom_directory
+            slice = addFloderMetaInfo(original_dicom_directory, new_folder=fune_dicom_directory)
+            # fune_dicom_directory->final_directory
+            dicom2nii(fune_dicom_directory, final_directory)
+        else:
+            slice = listDir(original_dicom_directory).__len__()
+            dicom2nii(original_dicom_directory, final_directory)
+        print(final_directory + ' Done!')
         # 每处理完一个病人的病例进行csv记录
-        add_data = [{'Number': str(i),
+        add_data = [{'Number': str(number),
                      'File_Path': basic_ph_name1,
                      'Patient_ID Patient_Name': patient_name,
-                     'Breast_subject_ID': 'Breast_Training_%03d' % i,
+                     'Breast_subject_ID': 'Breast_Training_%03d' % number,
                      'Slice': slice,
                      'remark': isAddMetaInfo}]
         df = pd.DataFrame(add_data)
         df.to_csv(name_mapping_path, index=None, mode='a', header=None)
-
 
 '''
     .h5转化为.nii文件
@@ -506,9 +492,69 @@ def correct_bias():
                 # sitk.WriteImage(output_image, out_mri_path)
 
 
+# 进行特征匹配并将匹配的特征保存到csv文件中
+# pyradiomics 使用示例
+data_types = ['_ph1.nii', '_ph3.nii', '_ph5.nii', '_seg.nii']
+data_types_name = ['dceph1', 'dceph3', 'dceph5', 'seg']
+def feature_and_save_as_csv():
+    default_prefix = 'D:/Desktop/BREAST/BREAST/'
+    dce_train_data = default_prefix + 'breast-dataset-training-validation/Breast_TrainingData'
+    name_mapping_path = default_prefix + 'breast-dataset-training-validation/Breast_meta_data/breast_name_mapping.csv'
+    para_path = 'D:/Desktop/BREAST/BREAST/breast-dataset-training-validation/Breast_meta_data/Params.yml'
+
+    # 使用df读取Breast_MR_list.xlsx文件
+    pCR_info_df = pd.read_csv(
+        'D:/Desktop/BREAST/BREAST/breast-dataset-training-validation/Breast_meta_data/Breast_MR_list_ori.csv')
+    name_mapping_df = pd.read_csv(name_mapping_path)
+    name_mapping_df.rename({'Number': 'ID'}, axis=1, inplace=True)
+    df = pCR_info_df.merge(name_mapping_df, on="ID", how="right")
+
+    # 文件全部路径
+    files = []
+    for id_ in sorted(os.listdir(dce_train_data)):
+        file = {}
+        for data_type, data_type_name in zip(data_types, data_types_name):
+            file[data_type_name] = os.path.join(dce_train_data, id_, id_ + data_type)
+        index = df['Breast_subject_ID'][df['Breast_subject_ID'].values == id_].index
+        pCR_label = df['病理完全缓解'][index.values[0]]  # 0/1
+        file["id"] = id_
+        file["label"] = pCR_label
+        files.append(file)
+
+    # 对于每个病例使用配置文件初始化特征抽取器
+    result = {}
+    all_dic = []
+    extractor = FEE.RadiomicsFeatureExtractor(para_path)
+    # print("Extraction parameters:\n\t", extractor.settings)
+    # print("Enabled filters:\n\t", extractor.enabledImagetypes)
+    # print("Enabled features:\n\t", extractor.enabledFeatures)
+    for file in files:
+        data_type_seg = data_types_name[-1]
+        for data_type_except_seg in data_types_name[:-1]:
+            # 运行
+            result = extractor.execute(file[data_type_except_seg], file[data_type_seg])  # 抽取特征
+            # print("Result type:", type(result))  # result is returned in a Python ordered dictionary
+            print("Calculated features:", file["id"], data_type_except_seg)
+            # for key, value in result.items():  # 输出特征
+            #     print("\t", key, ":", value)
+            #     dic[key] = value
+            result['pid'] = file["id"]
+            result['modal'] = data_type_seg
+            # result['age'] =
+            # result['sex'] =
+            result['label'] = file["label"]
+            all_dic.append(result)
+
+    df = pd.DataFrame(all_dic)
+    print(df)
+    df.to_csv('D:/Desktop/BREAST/BREAST/breast-dataset-training-validation/Breast_meta_data/breast_input_ph135.csv')
+
 if __name__ == '__main__':
-    correct_bias()
+    breast_dicom2nii()
+    # breast_dicom2nii_t2()
+    # correct_bias()
     # crop_mass_area()
     # nii2h5_seg()
     # nii2h5_classification()
+    # feature_and_save_as_csv()
 
