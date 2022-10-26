@@ -913,33 +913,6 @@ def computeAffineAndAffineInverse(exampath,prefoldernum,nslice,fsort):
     return aff_mat, aff_inv_mat
 
 
-"""
-使用monai-1.0.0运行
-"""
-# import os
-# os.environ["KMP_DUPLICATE_LIB_OK"]  =  "TRUE"
-# from monai.transforms import LoadImaged, AddChanneld, SpatialCropD
-# def monai_crop():
-#     file = {}
-#     file['image'] = 'D:\Desktop\BREAST\BREAST/breast-dataset-training-validation\Breast_TrainingData\Breast_Training_005\Breast_Training_005_ph3.nii'
-#     file['label'] = 'D:\Desktop\BREAST\BREAST/breast-dataset-training-validation\Breast_TrainingData\Breast_Training_005\Breast_Training_005_seg.nii'
-#     data_dicts = []
-#     data_dicts.append(file)
-#     # 加载一个图像
-#     loader = LoadImaged(keys=["image", "label"], dtype=np.float32)
-#     sample_data = loader(data_dicts[0])
-#     # 计算质心
-#     CM = ndimage.measurements.center_of_mass(sample_data['label'].numpy())
-#     add_channel = AddChanneld(keys=["image", "label"])
-#     sample_data = add_channel(sample_data)
-#     crop = SpatialCropD(keys=["image", "label"], roi_center=CM, roi_size=(128, 128, 48))
-#     data_crop = crop(sample_data)
-#     print(data_crop['image'].shape)
-#     # 保存
-#     nib.save(nib.Nifti1Image(data_crop['image'].squeeze().numpy(), np.eye(4)), 'D:\Desktop\BREAST\BREAST/breast-dataset-training-validation'
-#                                                    '\Breast_TrainingData\Breast_Training_005\Breast_Training_005_ph3_monai_crop.nii')# (1, 256, 256, 30)
-#     nib.save(nib.Nifti1Image(data_crop['label'].squeeze().numpy(), np.eye(4)), 'D:\Desktop\BREAST\BREAST/breast-dataset-training-validation'
-#                                                    '\Breast_TrainingData\Breast_Training_005\Breast_Training_005_seg_monai_crop.nii')# (1, 256, 256, 30)
 
 if __name__ == '__main__':
     # breast_dicom2nii()
@@ -954,6 +927,6 @@ if __name__ == '__main__':
     # feature_and_save_as_csv()
     # slicer_test_FTV_1()
     # slicer_test_FTV_2()
-    # monai_crop()
+
 
 
