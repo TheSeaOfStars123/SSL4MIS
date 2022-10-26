@@ -24,17 +24,23 @@ from dicom2nifti.exceptions import ConversionError
 '''
     文件路径定义
 '''
-default_prefix = 'D:/Desktop/BREAST/BREAST/'
+# default_prefix = 'D:/Desktop/BREAST/BREAST/'
+default_prefix = '/Users/zyc/Desktop/'
+
 name_mapping_path = default_prefix + 'breast-dataset-training-validation/Breast_meta_data/breast_name_mapping.csv'
 name_mapping_path_t2 = default_prefix + 'breast-dataset-training-validation/Breast_meta_data/breast_name_mapping_t2.csv'
 name_mapping_path_dwi = default_prefix + 'breast-dataset-training-validation/Breast_meta_data/breast_name_mapping_dwi.csv'
+output_label_path = default_prefix + 'breast-dataset-training-validation/Breast_meta_data/output_label_info.csv'
+pCR_label_path = default_prefix + 'breast-dataset-training-validation/Breast_meta_data/Breast_MR_list_update.csv'
+para_path = 'D:/Desktop/BREAST/BREAST/breast-dataset-training-validation/Breast_meta_data/Params.yml'
+feature_radiomics_path = default_prefix + 'breast-dataset-training-validation/Breast_meta_data/breast_input_ph135.csv'
+
+root_path = default_prefix + 'breast-dataset-training-validation/Breast_TrainingData'
+h5py_path = default_prefix + 'breast-dataset-training-validation-h5/Breast_TrainingData'
 
 
 default_directory = 'F:/breastMR_202003_sort'
 fune_directory = 'F:/breast_dataset_patient'
-output_label_info = 'D:/Desktop/BREAST/BREAST/breast-dataset-training-validation/Breast_meta_data/output_label_info.csv'
-
-root_path = 'D:/Desktop/BREAST/BREAST/breast-dataset-training-validation/Breast_TrainingData'
 
 '''
     得到文件夹内各个文件名称
@@ -134,8 +140,7 @@ def dicom2nii(original_dicom_directory: str, output_file: str):
 
 def breast_dicom2nii():
     # 使用df读取Breast_MR_list_update.csv文件
-    pCR_info_df = pd.read_csv(
-        'D:/Desktop/BREAST/BREAST/breast-dataset-training-validation/Breast_meta_data/Breast_MR_list_update.csv')
+    pCR_info_df = pd.read_csv(pCR_label_path)
     dir_list = pCR_info_df["影像号"].astype(str) + " " +pCR_info_df['病人姓名'].astype(str)
     mass_labe_name_list = pCR_info_df['label名称']
     slice = 0
@@ -206,8 +211,7 @@ def breast_dicom2nii():
 
 def breast_dicom2nii_t2():
     # 使用df读取Breast_MR_list.xlsx文件
-    pCR_info_df = pd.read_csv(
-        'D:/Desktop/BREAST/BREAST/breast-dataset-training-validation/Breast_meta_data/Breast_MR_list_update.csv')
+    pCR_info_df = pd.read_csv(pCR_label_path)
     dir_list = pCR_info_df["影像号"].astype(str) + " " + pCR_info_df['病人姓名'].astype(str)
     mass_labe_name_list = pCR_info_df['label名称']
     slice = 0
@@ -270,8 +274,7 @@ def breast_dicom2nii_t2():
 
 def breast_dicom2nii_dwi():
     # 使用df读取Breast_MR_list.xlsx文件
-    pCR_info_df = pd.read_csv(
-        'D:/Desktop/BREAST/BREAST/breast-dataset-training-validation/Breast_meta_data/Breast_MR_list_update.csv')
+    pCR_info_df = pd.read_csv(pCR_label_path)
     dir_list = pCR_info_df["影像号"].astype(str) + " " + pCR_info_df['病人姓名'].astype(str)
     mass_labe_name_list = pCR_info_df['label名称']
     slice = 0
@@ -362,12 +365,12 @@ def crop_mass_area():
     # ERROR_LIST = [10, 59, 64, 67, 73, 76, 85, 162, 165, 175, 259]
     # for i in ERROR_LIST:
     for i in range(1, 309):
-        folder_path = "D:/Desktop/BREAST/BREAST/breast-dataset-training-validation/Breast_TrainingData/Breast_Training_%03d" % (i)
+        folder_path = default_prefix + "breast-dataset-training-validation/Breast_TrainingData/Breast_Training_%03d" % (i)
         if os.path.exists(os.path.join(folder_path, 'Breast_Training_%03d_ph1_voi_128x128x48.nii' % i)):
             continue
         if os.path.exists(folder_path):
-            file_path = "D:/Desktop/BREAST/BREAST/breast-dataset-training-validation/Breast_TrainingData/Breast_Training_%03d/Breast_Training_%03d_seg.nii" % (i, i)
-            mri_default_path = "D:/Desktop/BREAST/BREAST/breast-dataset-training-validation/Breast_TrainingData/Breast_Training_%03d/Breast_Training_%03d" % (i, i)
+            file_path = default_prefix + "breast-dataset-training-validation/Breast_TrainingData/Breast_Training_%03d/Breast_Training_%03d_seg.nii" % (i, i)
+            mri_default_path = default_prefix + "breast-dataset-training-validation/Breast_TrainingData/Breast_Training_%03d/Breast_Training_%03d" % (i, i)
             # nilearn读取数据
             roi_img = nib.load(file_path)
             roi_data = roi_img.get_data()
@@ -462,7 +465,7 @@ def crop_mass_area():
         # 每处理完一个病人的病例进行csv记录
         add_data = [{'Number': 'Breast_Training_%03d' % i, 'CM': list_or_tuple_to_string(CM), 'Shape:': list_or_tuple_to_string(mri_data.shape), 'labelSlice': list_or_tuple_to_string(label_slice_list), 'labelSlicesum': label_slice_sum, 'voiDataShape': voi_mri_data.shape}]
         df = pd.DataFrame(add_data)
-        df.to_csv(output_label_info, index=None, mode='a', header=None)
+        df.to_csv(output_label_path, index=None, mode='a', header=None)
 
 '''
     取出要预测的病变区域，向四个方向延申64像素，得到voi区域=128*128*64
@@ -474,12 +477,12 @@ def crop_mass_area_t2_or_dwi():
     # ERROR_LIST = [10, 59, 64, 67, 73, 76, 85, 162, 165, 175, 259]
     # for i in ERROR_LIST:
     for i in range(1, 309):
-        folder_path = "D:/Desktop/BREAST/BREAST/breast-dataset-training-validation/Breast_TrainingData/Breast_Training_%03d" % (i)
+        folder_path = default_prefix + "breast-dataset-training-validation/Breast_TrainingData/Breast_Training_%03d" % (i)
         # if os.path.exists(os.path.join(folder_path, ('Breast_Training_%03d' + LABEL + '_voi_128x128x48.nii') % i)):
         #     continue
         if os.path.exists(folder_path):
-            file_path = "D:/Desktop/BREAST/BREAST/breast-dataset-training-validation/Breast_TrainingData/Breast_Training_%03d/Breast_Training_%03d_seg.nii" % (i, i)
-            mri_default_path = "D:/Desktop/BREAST/BREAST/breast-dataset-training-validation/Breast_TrainingData/Breast_Training_%03d/Breast_Training_%03d" % (i, i)
+            file_path = default_prefix + "breast-dataset-training-validation/Breast_TrainingData/Breast_Training_%03d/Breast_Training_%03d_seg.nii" % (i, i)
+            mri_default_path = default_prefix + "breast-dataset-training-validation/Breast_TrainingData/Breast_Training_%03d/Breast_Training_%03d" % (i, i)
             # nilearn读取数据
             roi_img = nib.load(file_path)
             roi_data = roi_img.get_data()
@@ -563,7 +566,7 @@ def crop_mass_area_t2_or_dwi():
         # 每处理完一个病人的病例进行csv记录
         add_data = [{'Number': 'Breast_Training_%03d' % i, 'CM': list_or_tuple_to_string(CM), 'Shape:': list_or_tuple_to_string(mri_data.shape), 'labelSlice': list_or_tuple_to_string(label_slice_list), 'labelSlicesum': label_slice_sum, 'voiDataShape': voi_mri_data.shape}]
         df = pd.DataFrame(add_data)
-        # df.to_csv(output_label_info, index=None, mode='a', header=None)
+        # df.to_csv(output_label_path, index=None, mode='a', header=None)
 
 '''
     for seg h5 dataset
@@ -576,9 +579,6 @@ def crop_mass_area_t2_or_dwi():
 '''
 def nii2h5_seg():
     data_types = ['_ph1_voi_debug.nii', '_ph3_voi_debug.nii', '_ph5_voi_debug.nii']
-    # 修改h5存放路径
-    h5py_path = 'D:\Desktop\BREAST\BREAST\data'
-    # h5py_path = 'D:/Desktop/BREAST/BREAST/breast-dataset-training-validation-h5/Breast_TrainingData'
     id_num = 0
     for id_ in sorted(os.listdir(root_path)):
         # 载入所有image模态
@@ -617,14 +617,12 @@ def nii2h5_seg():
     "label":(1,) 0-pCR 1-non-pCR
 '''
 def nii2h5_classification():
+    data_types = ['_ph1_voi_debug.nii', '_ph3_voi_debug.nii', '_ph5_voi_debug.nii']
     # 使用df读取Breast_MR_list.xlsx文件
-    pCR_info_df = pd.read_csv('D:/Desktop/BREAST/BREAST/breast-dataset-training-validation/Breast_meta_data/Breast_MR_list_ori.csv')
+    pCR_info_df = pd.read_csv(pCR_label_path)
     name_mapping_df = pd.read_csv(name_mapping_path)
     name_mapping_df.rename({'Number': 'ID'}, axis=1, inplace=True)
     df = pCR_info_df.merge(name_mapping_df, on="ID", how="right")
-    # 修改h5存放路径
-    h5py_path = 'D:\Desktop\BREAST\BREAST\data'
-    # h5py_path = 'D:/Desktop/BREAST/BREAST/breast-dataset-training-validation-h5/Breast_TrainingData'
     id_num = 0
     for id_ in sorted(os.listdir(root_path)):
         # 载入所有image模态
@@ -654,9 +652,9 @@ def nii2h5_classification():
 '''
 def correct_bias():
     for i in range(1, 309):
-        folder_path = "D:/Desktop/BREAST/BREAST/breast-dataset-training-validation/Breast_TrainingData/Breast_Training_%03d" % (i)
+        folder_path = default_prefix + "breast-dataset-training-validation/Breast_TrainingData/Breast_Training_%03d" % (i)
         if(os.path.exists(folder_path)):
-            mri_default_path = "D:/Desktop/BREAST/BREAST/breast-dataset-training-validation/Breast_TrainingData/Breast_Training_%03d/Breast_Training_%03d" % (i, i)
+            mri_default_path = default_prefix + "breast-dataset-training-validation/Breast_TrainingData/Breast_Training_%03d/Breast_Training_%03d" % (i, i)
             correct = N4BiasFieldCorrection()
             # 对6个阶段
             for j in range(1, 6):
@@ -671,7 +669,6 @@ def correct_bias():
                 # output_image = sitk.N4BiasFieldCorrection(input_image, input_image > 0)
                 # sitk.WriteImage(output_image, out_mri_path)
 
-
 '''
     进行特征匹配并将匹配的特征保存到csv文件中
     pyradiomics 使用示例
@@ -679,24 +676,19 @@ def correct_bias():
 def feature_and_save_as_csv():
     data_types = ['_ph1.nii', '_ph3.nii', '_ph5.nii', '_seg.nii']
     data_types_name = ['dceph1', 'dceph3', 'dceph5', 'seg']
-    default_prefix = 'D:/Desktop/BREAST/BREAST/'
-    dce_train_data = default_prefix + 'breast-dataset-training-validation/Breast_TrainingData'
-    name_mapping_path = default_prefix + 'breast-dataset-training-validation/Breast_meta_data/breast_name_mapping.csv'
-    para_path = 'D:/Desktop/BREAST/BREAST/breast-dataset-training-validation/Breast_meta_data/Params.yml'
 
     # 使用df读取Breast_MR_list.xlsx文件
-    pCR_info_df = pd.read_csv(
-        'D:/Desktop/BREAST/BREAST/breast-dataset-training-validation/Breast_meta_data/Breast_MR_list_ori.csv')
+    pCR_info_df = pd.read_csv(pCR_label_path)
     name_mapping_df = pd.read_csv(name_mapping_path)
     name_mapping_df.rename({'Number': 'ID'}, axis=1, inplace=True)
     df = pCR_info_df.merge(name_mapping_df, on="ID", how="right")
 
     # 文件全部路径
     files = []
-    for id_ in sorted(os.listdir(dce_train_data)):
+    for id_ in sorted(os.listdir(root_path)):
         file = {}
         for data_type, data_type_name in zip(data_types, data_types_name):
-            file[data_type_name] = os.path.join(dce_train_data, id_, id_ + data_type)
+            file[data_type_name] = os.path.join(root_path, id_, id_ + data_type)
         index = df['Breast_subject_ID'][df['Breast_subject_ID'].values == id_].index
         pCR_label = df['病理完全缓解'][index.values[0]]  # 0/1
         file["id"] = id_
@@ -729,8 +721,7 @@ def feature_and_save_as_csv():
 
     df = pd.DataFrame(all_dic)
     print(df)
-    df.to_csv('D:/Desktop/BREAST/BREAST/breast-dataset-training-validation/Breast_meta_data/breast_input_ph135.csv')
-
+    df.to_csv(feature_radiomics_path)
 
 def resample_sitk():
     resample_data_types = ['_t2.nii', '_dwi.nii']
@@ -746,6 +737,7 @@ def resample_sitk():
             resample_out_img = resample_image(resample_img, ph1_img.GetSize(), ph1_img.GetOrigin(), ph1_img.GetSpacing())
             sitk.WriteImage(resample_out_img, os.path.join(root_path, id_, id_ + after_data_type))
         print(id_ + ' finished!')
+
 
 def resample_image(itk_image, out_size, out_origin, out_spacing=[1.0, 1.0, 2.0]):
     # 根据输出out_spacing设置新的size
@@ -912,7 +904,24 @@ def computeAffineAndAffineInverse(exampath,prefoldernum,nslice,fsort):
 
     return aff_mat, aff_inv_mat
 
+'''
+将数据集拷贝到monailabel_dataset文件夹内
+'''
+def ready_for_monai_dataset():
+    # 首先读取name_mapping.csv文件 排除非优质数据
+    name_mapping_df = pd.read_csv(name_mapping_path, encoding='unicode_escape')
+    # 遍历每行
+    for idx, data in name_mapping_df.iterrows():
+        if data['Exclude'] != 1.0:
 
+            image_file_path = os.path.join(root_path, data['Breast_subject_ID'] , data['Breast_subject_ID'] + '_ph3.nii')
+            label_file_path = os.path.join(root_path, data['Breast_subject_ID'] , data['Breast_subject_ID'] + '_seg.nii')
+            destinate_image_path = '/Users/zyc/Desktop/DESKTOP/MONAILabel_datasets/datasets/myTask01_Breast'
+            destinate_label_path = '/Users/zyc/Desktop/DESKTOP/MONAILabel_datasets/datasets/myTask01_Breast/labels/final'
+            destinate_name = data['Breast_subject_ID'] + '_ph3.nii'
+            shutil.copyfile(image_file_path, os.path.join(destinate_image_path, destinate_name))
+            shutil.copyfile(label_file_path, os.path.join(destinate_label_path, destinate_name))
+            print(destinate_name + 'Done!')
 
 if __name__ == '__main__':
     # breast_dicom2nii()
@@ -927,6 +936,5 @@ if __name__ == '__main__':
     # feature_and_save_as_csv()
     # slicer_test_FTV_1()
     # slicer_test_FTV_2()
-
-
+    ready_for_monai_dataset()
 
