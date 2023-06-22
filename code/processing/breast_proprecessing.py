@@ -3,11 +3,12 @@
   @ Author: Zhao YaChen
 '''
 import dicom2nifti
-import pydicom
 import nibabel as nib
 from io import BytesIO
 
 import numpy as np
+from PIL import Image
+from matplotlib import pyplot as plt
 from pydicom import read_file
 import os
 import re
@@ -21,23 +22,24 @@ from nipype.interfaces.ants import N4BiasFieldCorrection
 
 import radiomics.featureextractor as FEE
 from dicom2nifti.exceptions import ConversionError
+from skimage import measure
+
 '''
     文件路径定义
 '''
-# default_prefix = 'D:/Desktop/BREAST/BREAST/'
-default_prefix = '/Users/zyc/Desktop/'
+default_prefix = 'D:/Desktop/BREAST/BREAST/'
+default_prefix2 = 'D:/Desktop/'
+# default_prefix = '/Users/zyc/Desktop/'
 
 name_mapping_path = default_prefix + 'breast-dataset-training-validation/Breast_meta_data/breast_name_mapping.csv'
 name_mapping_path_t2 = default_prefix + 'breast-dataset-training-validation/Breast_meta_data/breast_name_mapping_t2.csv'
 name_mapping_path_dwi = default_prefix + 'breast-dataset-training-validation/Breast_meta_data/breast_name_mapping_dwi.csv'
+name_mapping_path_ph0 = default_prefix + 'breast-dataset-training-validation/Breast_meta_data/breast_name_mapping_ph0.csv'
 output_label_path = default_prefix + 'breast-dataset-training-validation/Breast_meta_data/output_label_info.csv'
 pCR_label_path = default_prefix + 'breast-dataset-training-validation/Breast_meta_data/Breast_MR_list_update.csv'
-para_path = 'D:/Desktop/BREAST/BREAST/breast-dataset-training-validation/Breast_meta_data/Params.yml'
-feature_radiomics_path = default_prefix + 'breast-dataset-training-validation/Breast_meta_data/breast_input_ph135.csv'
 
 root_path = default_prefix + 'breast-dataset-training-validation/Breast_TrainingData'
 h5py_path = default_prefix + 'breast-dataset-training-validation-h5/Breast_TrainingData'
-
 
 default_directory = 'F:/breastMR_202003_sort'
 fune_directory = 'F:/breast_dataset_patient'
@@ -45,17 +47,20 @@ fune_directory = 'F:/breast_dataset_patient'
 '''
     得到文件夹内各个文件名称
 '''
+
+
 def get_file_list_by_time(file_path):
-  dir_list = os.listdir(file_path)
-  if not dir_list:
-      return
-  else:
-      # 注意，这里使用lambda表达式，将文件按照最后修改时间顺序升序排列
-      # os.path.getmtime() 函数是获取文件最后修改时间
-      # os.path.getctime() 函数是获取文件最后创建时间
-      dir_list = sorted(dir_list,key=lambda x: os.path.getctime(os.path.join(file_path, x)))
-      print(dir_list)
-      return dir_list
+    dir_list = os.listdir(file_path)
+    if not dir_list:
+        return
+    else:
+        # 注意，这里使用lambda表达式，将文件按照最后修改时间顺序升序排列
+        # os.path.getmtime() 函数是获取文件最后修改时间
+        # os.path.getctime() 函数是获取文件最后创建时间
+        dir_list = sorted(dir_list, key=lambda x: os.path.getctime(os.path.join(file_path, x)))
+        print(dir_list)
+        return dir_list
+
 
 def sort_key(s):
     # 排序关键字匹配
@@ -66,6 +71,7 @@ def sort_key(s):
         except:
             c = -1
         return int(c)
+
 
 # 用于生成罗列数据集的每个病人的名称
 def get_file_list_by_name(file_path):
@@ -84,6 +90,8 @@ def get_file_list_by_name(file_path):
 '''
     将.dcm格式序列图像转化为.nii格式
 '''
+
+
 def addFileMetaInfo(file_path, new_floder, new_name):
     # bytestream = b'\x02\x00\x02\x00\x55\x49\x16\x00\x31\x2e\x32\x2e\x38\x34\x30\x2e\x31' \
     #              b'\x30\x30\x30\x38\x2e\x35\x2e\x31\x2e\x31\x2e\x39\x00\x02\x00\x10\x00' \
@@ -113,6 +121,7 @@ def addFileMetaInfo(file_path, new_floder, new_name):
         os.makedirs(new_floder)
     ds.save_as(os.path.join(new_floder, new_name))
 
+
 # 默认参数降低调用函数的难度
 def addFloderMetaInfo(old_folder, new_folder, new_name=""):
     # 得到旧文件夹的每个文件
@@ -135,13 +144,16 @@ def listDir(folder_path):
 '''
     .dicom转换为.nii
 '''
+
+
 def dicom2nii(original_dicom_directory: str, output_file: str):
     dicom2nifti.dicom_series_to_nifti(original_dicom_directory, output_file, reorient_nifti=False)
+
 
 def breast_dicom2nii():
     # 使用df读取Breast_MR_list_update.csv文件
     pCR_info_df = pd.read_csv(pCR_label_path)
-    dir_list = pCR_info_df["影像号"].astype(str) + " " +pCR_info_df['病人姓名'].astype(str)
+    dir_list = pCR_info_df["影像号"].astype(str) + " " + pCR_info_df['病人姓名'].astype(str)
     mass_labe_name_list = pCR_info_df['label名称']
     slice = 0
     # isAddMetaInfo = False
@@ -159,7 +171,8 @@ def breast_dicom2nii():
             label_nii_path = default_prefix + 'breast-dataset-training-validation/Breast_TrainingData/Breast_Training_%03d/Breast_Training_%03d_seg.nii' % (
                 number, number)
             # 首先将mass-label.nii复制到目标文件夹中
-            shutil.copyfile(os.path.join(default_directory, patient_name, mass_labe_name + "-label.nii"), label_nii_path)
+            shutil.copyfile(os.path.join(default_directory, patient_name, mass_labe_name + "-label.nii"),
+                            label_nii_path)
         for j in range(1, 6):
             basic_ph_name_list = [
                 # 'Ph%d_Dyn Ax Vibrant 5p' % j,
@@ -230,7 +243,8 @@ def breast_dicom2nii_t2():
             label_nii_path = default_prefix + 'breast-dataset-training-validation/Breast_TrainingData/Breast_Training_%03d/Breast_Training_%03d_seg.nii' % (
                 number, number)
             # 首先将mass-label.nii复制到目标文件夹中
-            shutil.copyfile(os.path.join(default_directory, patient_name, mass_labe_name + "-label.nii"), label_nii_path)
+            shutil.copyfile(os.path.join(default_directory, patient_name, mass_labe_name + "-label.nii"),
+                            label_nii_path)
         basic_ph_name_list = [
             'IDEAL T2',
             'my T2'
@@ -272,6 +286,7 @@ def breast_dicom2nii_t2():
         df = pd.DataFrame(add_data)
         # df.to_csv(name_mapping_path_t2, index=None, mode='a', header=None)
 
+
 def breast_dicom2nii_dwi():
     # 使用df读取Breast_MR_list.xlsx文件
     pCR_info_df = pd.read_csv(pCR_label_path)
@@ -293,7 +308,8 @@ def breast_dicom2nii_dwi():
             label_nii_path = default_prefix + 'breast-dataset-training-validation/Breast_TrainingData/Breast_Training_%03d/Breast_Training_%03d_seg.nii' % (
                 number, number)
             # 首先将mass-label.nii复制到目标文件夹中
-            shutil.copyfile(os.path.join(default_directory, patient_name, mass_labe_name + "-label.nii"), label_nii_path)
+            shutil.copyfile(os.path.join(default_directory, patient_name, mass_labe_name + "-label.nii"),
+                            label_nii_path)
         basic_ph_name_list = [
             'Ax DWI',
             'my DWI',
@@ -341,9 +357,79 @@ def breast_dicom2nii_dwi():
         df = pd.DataFrame(add_data)
         # df.to_csv(name_mapping_path_dwi, index=None, mode='a', header=None)
 
+
+def breast_dicom2nii_ph0():
+    # 使用df读取Breast_MR_list.xlsx文件
+    pCR_info_df = pd.read_csv(pCR_label_path)
+    dir_list = pCR_info_df["影像号"].astype(str) + " " + pCR_info_df['病人姓名'].astype(str)
+    mass_labe_name_list = pCR_info_df['label名称']
+    isCopyLabelFile = False
+
+    for number in range(307, 309):
+        patient_name = dir_list.get(number)
+        mass_labe_name = mass_labe_name_list.get(number)
+        if pCR_info_df['label是否排除'][number] != '是' and pCR_info_df['dce是否排除'][number] != '是' and pCR_info_df[
+            't2是否排除'][number] != '是':
+            number = number + 1
+            nii_directory = default_prefix + 'breast-dataset-training-validation/Breast_TrainingData/Breast_Training_%03d' % number
+            if not os.path.exists(nii_directory):
+                os.makedirs(nii_directory)
+            if isCopyLabelFile:
+                label_nii_path = default_prefix + 'breast-dataset-training-validation/Breast_TrainingData/Breast_Training_%03d/Breast_Training_%03d_seg.nii' % (
+                    number, number)
+                # 首先将mass-label.nii复制到目标文件夹中
+                shutil.copyfile(os.path.join(default_directory, patient_name, mass_labe_name + "-label.nii"),
+                                label_nii_path)
+            basic_ph_name_list = [
+                'my ph0',
+                'ax VIBRANT-FLEX',
+                'dyn Ax Vibrant 5p',
+                '500-dyn Ax Vibrant 5p',
+                'Dyn Ax Vibrant',
+                'Dyn Ax Vibrant Ph0',
+                '500-WATER_ Ax VIBRANT-Flex',
+                '600-dyn Ax Vibrant 5p',
+                '700-dyn Ax Vibrant 5p',
+                'WATER_ Ax VIBRANT-Flex',
+            ]
+            for basic_ph_name in basic_ph_name_list:
+                original_dicom_directory = os.path.join(default_directory, patient_name, basic_ph_name)
+                if os.path.exists(original_dicom_directory):
+                    basic_ph_name1 = basic_ph_name
+                    break
+
+            fune_dicom_directory = os.path.join(fune_directory, patient_name, 'ph0')
+            final_directory = os.path.join(nii_directory, 'Breast_Training_%03d_ph0.nii' % (number))
+            try:
+                isAddMetaInfo = True
+                # original_dicom_directory->fune_dicom_directory
+                slice = addFloderMetaInfo(original_dicom_directory, new_folder=fune_dicom_directory)
+                # fune_dicom_directory->final_directory
+                dicom2nii(fune_dicom_directory, final_directory)
+            except (ConversionError, FileNotFoundError, ValueError):
+                print("Oops! FileNotFoundError: [WinError 3] 系统找不到指定的路径。")
+                isAddMetaInfo = False
+                slice = listDir(original_dicom_directory).__len__()
+                dicom2nii(original_dicom_directory, final_directory)
+            print(final_directory + ' Done!')
+            # 每处理完一个病人的病例进行csv记录
+            add_data = [{'Number': str(number),
+                         'File_Path': basic_ph_name1,
+                         'Patient_ID Patient_Name': patient_name,
+                         'Breast_subject_ID': 'Breast_Training_%03d' % number,
+                         'Slice': slice,
+                         'remark': isAddMetaInfo}]
+            df = pd.DataFrame(add_data)
+            df.to_csv(name_mapping_path_ph0, index=None, mode='a', header=None)
+        else:
+            number = number + 1
+
+
 '''
     .h5转化为.nii文件
 '''
+
+
 def h5ToNII():
     dataset = h5py.File('D:\Desktop\SSL4MIS\data\BraTS2019\data\BraTS19_TCIA01_131_1.h5', 'r')  # 指定h5文件的路径
     savepath = "D:\Desktop\SSL4MIS\data\BraTS2019\data(nii)"  # 另存为nii文件的路径
@@ -358,6 +444,7 @@ def h5ToNII():
         sitk.WriteImage(img, os.path.join(savepath, first_level_key, "BraTS19_TCIA01_131_1.nii.gz"))
         print(first_level_key)
 
+
 '''
     取出要预测的病变区域，向四个方向延申64像素，得到voi区域=128*128*64
 '''
@@ -365,12 +452,15 @@ def crop_mass_area():
     # ERROR_LIST = [10, 59, 64, 67, 73, 76, 85, 162, 165, 175, 259]
     # for i in ERROR_LIST:
     for i in range(1, 309):
-        folder_path = default_prefix + "breast-dataset-training-validation/Breast_TrainingData/Breast_Training_%03d" % (i)
+        folder_path = default_prefix + "breast-dataset-training-validation/Breast_TrainingData/Breast_Training_%03d" % (
+            i)
         if os.path.exists(os.path.join(folder_path, 'Breast_Training_%03d_ph1_voi_128x128x48.nii' % i)):
             continue
         if os.path.exists(folder_path):
-            file_path = default_prefix + "breast-dataset-training-validation/Breast_TrainingData/Breast_Training_%03d/Breast_Training_%03d_seg.nii" % (i, i)
-            mri_default_path = default_prefix + "breast-dataset-training-validation/Breast_TrainingData/Breast_Training_%03d/Breast_Training_%03d" % (i, i)
+            file_path = default_prefix + "breast-dataset-training-validation/Breast_TrainingData/Breast_Training_%03d/Breast_Training_%03d_seg.nii" % (
+            i, i)
+            mri_default_path = default_prefix + "breast-dataset-training-validation/Breast_TrainingData/Breast_Training_%03d/Breast_Training_%03d" % (
+            i, i)
             # nilearn读取数据
             roi_img = nib.load(file_path)
             roi_data = roi_img.get_data()
@@ -460,12 +550,16 @@ def crop_mass_area():
             print("voi mri shape ->", voi_mri_data.shape)
 
         def list_or_tuple_to_string(list1):
-            return '('+' '.join(str(e) for e in list1)+')'
+            return '(' + ' '.join(str(e) for e in list1) + ')'
 
         # 每处理完一个病人的病例进行csv记录
-        add_data = [{'Number': 'Breast_Training_%03d' % i, 'CM': list_or_tuple_to_string(CM), 'Shape:': list_or_tuple_to_string(mri_data.shape), 'labelSlice': list_or_tuple_to_string(label_slice_list), 'labelSlicesum': label_slice_sum, 'voiDataShape': voi_mri_data.shape}]
+        add_data = [{'Number': 'Breast_Training_%03d' % i, 'CM': list_or_tuple_to_string(CM),
+                     'Shape:': list_or_tuple_to_string(mri_data.shape),
+                     'labelSlice': list_or_tuple_to_string(label_slice_list), 'labelSlicesum': label_slice_sum,
+                     'voiDataShape': voi_mri_data.shape}]
         df = pd.DataFrame(add_data)
         df.to_csv(output_label_path, index=None, mode='a', header=None)
+
 
 '''
     取出要预测的病变区域，向四个方向延申64像素，得到voi区域=128*128*64
@@ -477,12 +571,15 @@ def crop_mass_area_t2_or_dwi():
     # ERROR_LIST = [10, 59, 64, 67, 73, 76, 85, 162, 165, 175, 259]
     # for i in ERROR_LIST:
     for i in range(1, 309):
-        folder_path = default_prefix + "breast-dataset-training-validation/Breast_TrainingData/Breast_Training_%03d" % (i)
+        folder_path = default_prefix + "breast-dataset-training-validation/Breast_TrainingData/Breast_Training_%03d" % (
+            i)
         # if os.path.exists(os.path.join(folder_path, ('Breast_Training_%03d' + LABEL + '_voi_128x128x48.nii') % i)):
         #     continue
         if os.path.exists(folder_path):
-            file_path = default_prefix + "breast-dataset-training-validation/Breast_TrainingData/Breast_Training_%03d/Breast_Training_%03d_seg.nii" % (i, i)
-            mri_default_path = default_prefix + "breast-dataset-training-validation/Breast_TrainingData/Breast_Training_%03d/Breast_Training_%03d" % (i, i)
+            file_path = default_prefix + "breast-dataset-training-validation/Breast_TrainingData/Breast_Training_%03d/Breast_Training_%03d_seg.nii" % (
+            i, i)
+            mri_default_path = default_prefix + "breast-dataset-training-validation/Breast_TrainingData/Breast_Training_%03d/Breast_Training_%03d" % (
+            i, i)
             # nilearn读取数据
             roi_img = nib.load(file_path)
             roi_data = roi_img.get_data()
@@ -561,12 +658,16 @@ def crop_mass_area_t2_or_dwi():
             print("voi mri shape ->", voi_mri_data.shape)
 
         def list_or_tuple_to_string(list1):
-            return '('+' '.join(str(e) for e in list1)+')'
+            return '(' + ' '.join(str(e) for e in list1) + ')'
 
         # 每处理完一个病人的病例进行csv记录
-        add_data = [{'Number': 'Breast_Training_%03d' % i, 'CM': list_or_tuple_to_string(CM), 'Shape:': list_or_tuple_to_string(mri_data.shape), 'labelSlice': list_or_tuple_to_string(label_slice_list), 'labelSlicesum': label_slice_sum, 'voiDataShape': voi_mri_data.shape}]
+        add_data = [{'Number': 'Breast_Training_%03d' % i, 'CM': list_or_tuple_to_string(CM),
+                     'Shape:': list_or_tuple_to_string(mri_data.shape),
+                     'labelSlice': list_or_tuple_to_string(label_slice_list), 'labelSlicesum': label_slice_sum,
+                     'voiDataShape': voi_mri_data.shape}]
         df = pd.DataFrame(add_data)
         # df.to_csv(output_label_path, index=None, mode='a', header=None)
+
 
 '''
     for seg h5 dataset
@@ -577,6 +678,8 @@ def crop_mass_area_t2_or_dwi():
     "image":(3, 128, 128, 64)
     "label":(1, 128, 128, 64)
 '''
+
+
 def nii2h5_seg():
     data_types = ['_ph1_voi_debug.nii', '_ph3_voi_debug.nii', '_ph5_voi_debug.nii']
     id_num = 0
@@ -607,6 +710,7 @@ def nii2h5_seg():
         id_num += 1
     print("Converted total {} niis to h5 files".format(id_num))
 
+
 '''
     for classification h5 dataset
     将.nii转化为.h5文件
@@ -616,6 +720,8 @@ def nii2h5_seg():
     "image":(3, 128, 128, 64)
     "label":(1,) 0-pCR 1-non-pCR
 '''
+
+
 def nii2h5_classification():
     data_types = ['_ph1_voi_debug.nii', '_ph3_voi_debug.nii', '_ph5_voi_debug.nii']
     # 使用df读取Breast_MR_list.xlsx文件
@@ -638,7 +744,7 @@ def nii2h5_classification():
         # 根据Breast_subject_ID返回ID
         index = df['Breast_subject_ID'][df['Breast_subject_ID'].values == id_].index
         # 根据ID返回“病理完全缓解”
-        pCR_label = (df['病理完全缓解'][index.values[0]], )   # 0/1
+        pCR_label = (df['病理完全缓解'][index.values[0]],)  # 0/1
         f = h5py.File(os.path.join(h5py_path, id_ + '_ph135_cls.h5'), 'w')
         f.create_dataset('image', data=img, compression="gzip")
         f.create_dataset('label', data=pCR_label, compression="gzip")
@@ -650,16 +756,20 @@ def nii2h5_classification():
 '''
     使用N4BiasFieldCorrection可以校正偏差域
 '''
+
+
 def correct_bias():
     for i in range(1, 309):
-        folder_path = default_prefix + "breast-dataset-training-validation/Breast_TrainingData/Breast_Training_%03d" % (i)
-        if(os.path.exists(folder_path)):
-            mri_default_path = default_prefix + "breast-dataset-training-validation/Breast_TrainingData/Breast_Training_%03d/Breast_Training_%03d" % (i, i)
+        folder_path = default_prefix + "breast-dataset-training-validation/Breast_TrainingData/Breast_Training_%03d" % (
+            i)
+        if (os.path.exists(folder_path)):
+            mri_default_path = default_prefix + "breast-dataset-training-validation/Breast_TrainingData/Breast_Training_%03d/Breast_Training_%03d" % (
+            i, i)
             correct = N4BiasFieldCorrection()
             # 对6个阶段
             for j in range(1, 6):
                 mri_path = mri_default_path + "_ph" + str(j) + ".nii"
-                out_mri_path = mri_default_path + "_ph" + str(j) + "_N4Bias"+".nii"
+                out_mri_path = mri_default_path + "_ph" + str(j) + "_N4Bias" + ".nii"
                 # 使用N4BiasFieldCorrection校正MRI图像的偏置场
                 correct.inputs.input_image = mri_path
                 correct.inputs.output_image = out_mri_path
@@ -669,59 +779,6 @@ def correct_bias():
                 # output_image = sitk.N4BiasFieldCorrection(input_image, input_image > 0)
                 # sitk.WriteImage(output_image, out_mri_path)
 
-'''
-    进行特征匹配并将匹配的特征保存到csv文件中
-    pyradiomics 使用示例
-'''
-def feature_and_save_as_csv():
-    data_types = ['_ph1.nii', '_ph3.nii', '_ph5.nii', '_seg.nii']
-    data_types_name = ['dceph1', 'dceph3', 'dceph5', 'seg']
-
-    # 使用df读取Breast_MR_list.xlsx文件
-    pCR_info_df = pd.read_csv(pCR_label_path)
-    name_mapping_df = pd.read_csv(name_mapping_path)
-    name_mapping_df.rename({'Number': 'ID'}, axis=1, inplace=True)
-    df = pCR_info_df.merge(name_mapping_df, on="ID", how="right")
-
-    # 文件全部路径
-    files = []
-    for id_ in sorted(os.listdir(root_path)):
-        file = {}
-        for data_type, data_type_name in zip(data_types, data_types_name):
-            file[data_type_name] = os.path.join(root_path, id_, id_ + data_type)
-        index = df['Breast_subject_ID'][df['Breast_subject_ID'].values == id_].index
-        pCR_label = df['病理完全缓解'][index.values[0]]  # 0/1
-        file["id"] = id_
-        file["label"] = pCR_label
-        files.append(file)
-
-    # 对于每个病例使用配置文件初始化特征抽取器
-    result = {}
-    all_dic = []
-    extractor = FEE.RadiomicsFeatureExtractor(para_path)
-    # print("Extraction parameters:\n\t", extractor.settings)
-    # print("Enabled filters:\n\t", extractor.enabledImagetypes)
-    # print("Enabled features:\n\t", extractor.enabledFeatures)
-    for file in files:
-        data_type_seg = data_types_name[-1]
-        for data_type_except_seg in data_types_name[:-1]:
-            # 运行
-            result = extractor.execute(file[data_type_except_seg], file[data_type_seg])  # 抽取特征
-            # print("Result type:", type(result))  # result is returned in a Python ordered dictionary
-            print("Calculated features:", file["id"], data_type_except_seg)
-            # for key, value in result.items():  # 输出特征
-            #     print("\t", key, ":", value)
-            #     dic[key] = value
-            result['pid'] = file["id"]
-            result['modal'] = data_type_seg
-            # result['age'] =
-            # result['sex'] =
-            result['label'] = file["label"]
-            all_dic.append(result)
-
-    df = pd.DataFrame(all_dic)
-    print(df)
-    df.to_csv(feature_radiomics_path)
 
 def resample_sitk():
     resample_data_types = ['_t2.nii', '_dwi.nii']
@@ -734,7 +791,8 @@ def resample_sitk():
             if len(resample_img.GetSize()) == 4:
                 resample_img = resample_img[:, :, :, 0]
                 print(id_ + ' has 4 dimension.')
-            resample_out_img = resample_image(resample_img, ph1_img.GetSize(), ph1_img.GetOrigin(), ph1_img.GetSpacing())
+            resample_out_img = resample_image(resample_img, ph1_img.GetSize(), ph1_img.GetOrigin(),
+                                              ph1_img.GetSpacing())
             sitk.WriteImage(resample_out_img, os.path.join(root_path, id_, id_ + after_data_type))
         print(id_ + ' finished!')
 
@@ -756,185 +814,392 @@ def resample_image(itk_image, out_size, out_origin, out_spacing=[1.0, 1.0, 2.0])
     resample.SetInterpolator(sitk.sitkBSpline)
     return resample.Execute(itk_image)
 
-def slicer_test_FTV_1():
-    img1path = 'D:/Desktop/BREAST/BREAST/breast_dateset_original/165299 CAI GUI E/500-dyn Ax Vibrant 5p/1.2.840.113619.2.388.57473.14116753.12754.1566890345.300.dcm'
-
-    header = pydicom.dcmread(img1path, stop_before_pixels=True, force=True)
-    contenttime = header[0x8, 0x33].value
-    locsinacq = header[0x21, 0x104f].value
-    # temppos = int(header[0x20, 0x100].value)
-    # numtemp = int(header[0x20, 0x105].value)
-    # tempressec = header.TemporalResolution
-    # tempressec = float(header[0x29, 0x1010].value)
-    # convert from usec or msec to sec
-    # while tempressec > 1000:
-    #     tempressec = tempressec / 1000
-    # trigtime = float(header[0x18, 0x1060].value)
-    acqtime = header.AcquisitionTime
-    studydate = header.StudyDate
-    print(header)
-
-    img2path = 'D:/Desktop/BREAST/BREAST/breast_dateset_original/165299 CAI GUI E/501-Ph1_dyn Ax Vibrant 5p/1.2.840.113619.2.388.57473.14116753.12754.1566890345.544.dcm'
-    header = pydicom.dcmread(img2path, stop_before_pixels=True, force=True)
-    contenttime = header[0x8, 0x33].value
-    locsinacq = header[0x21, 0x104f].value
-    temppos = int(header[0x20, 0x100].value)  # (0020, 0100) Temporal Position Identifier        IS: '1'
-    numtemp = int(header[0x20, 0x105].value)  # (0020, 0105) Number of Temporal Positions        IS: '5'
-    # tempressec = header.TemporalResolution
-    # tempressec = float(header[0x29, 0x1010].value)
-    # # convert from usec or msec to sec
-    # while tempressec > 1000:
-    #     tempressec = tempressec / 1000
-    trigtime = float(header[0x18, 0x1060].value) # (0018, 1060) Trigger Time                        DS: '0.0'
-    acqtime = header.AcquisitionTime
-    studydate = header.StudyDate
-    print(header)
-
-def slicer_test_FTV_2():
-    exampath = 'D:/Desktop/BREAST/BREAST/breast_dateset_original/165299 CAI GUI E'
-    prefoldernum = '500-dyn Ax Vibrant 5p'
-    nslice = 0
-    fsort = 0
-    computeAffineAndAffineInverse(exampath, prefoldernum, nslice, fsort)
-
-import pydicom
-def computeAffineAndAffineInverse(exampath,prefoldernum,nslice,fsort):
-    imgpath = os.path.join(exampath,str(prefoldernum))
-    print(imgpath)
-    files = os.listdir(imgpath)
-
-    #nslice = 0 is when there is 1 phase per folder, so N = slices/phase = # of DICOMs in folder
-    #If all DCE in same folder, nslice is already set to slices/phase, so N = nslice
-    if (nslice == 0):
-        N = len(files)
-        file1search1 = [i for i in files]
-
-        # file1search1 = [i for i in files if '001.dcm' in i]
-        file1search2 = [i for i in files if '001.DCM' in i]
-
-        #Added these 2 due to file naming in UCSF ISPY ID 16078
-        file1search3 = [i for i in files if 'I1.dcm' in i]
-        file1search4 = [i for i in files if 'I1.DCM' in i]
-
-        if len(file1search1) > 0:
-            file1 = os.path.join(imgpath,file1search1[0])
-
-        if len(file1search2) > 0:
-            file1 = os.path.join(imgpath,file1search2[0])
-
-        if len(file1search3) > 0:
-            file1 = os.path.join(imgpath,file1search3[0])
-
-        if len(file1search4) > 0:
-            file1 = os.path.join(imgpath,file1search4[0])
-
-        file1search5 = []
-        #Edit 1/26/2021: file1search that incorporates DICOMs
-        #with no .DCM or .dcm extension
-        if( len(file1search1)==0 and len(file1search2)==0 and len(file1search3)==0 and len(file1search4)==0):
-            file1search5 = [i for i in files if i.isdigit()]
-
-            if len(file1search5) > 0:
-                file1search5 = sorted(file1search5)
-                file1 = os.path.join(imgpath,file1search5[0])
-
-    else:
-        N = nslice
-        file1 = os.path.join(imgpath,fsort[0][0])
-
-
-
-    try:
-        img1 = pydicom.dcmread(file1, force=True)
-    except:
-        img1 = dicom.read_file(file1)
-
-    img1_orient = img1[0x20,0x37] #Image Orientation (Patient)
-    img1_orient = [float(i) for i in img1_orient] #convert from list of strings to list of floats (numeric)
-
-    x1_orient = img1_orient[0:3] #x,y,z change as you move 1 column to the right
-
-    y1_orient = img1_orient[3:] #x,y,z change as you move 1 row down
-
-    img1_pos = img1[0x20,0x32] #Image Position (Patient) for 1st slice
-    #Next 2 lines convert from header field with values to list of floats
-    img1_pos = img1_pos[0:]
-    img1_pos = [float(i) for i in img1_pos] #convert from list of strings to list of floats (numeric)
-
-    img_sp = img1[0x28,0x30] #Pixel Spacing
-    row_sp = float(img_sp[0]) #row spacing
-    col_sp = float(img_sp[1]) #column spacing
-
-    #Read DICOM for last slice
-    #Once again, separate by Philips and non-Philips (6/9/2020)
-    if (nslice == 0):
-        if (len(file1search1)>0 or len(file1search3)>0):
-            searchstr = file1search1[-1]
-            # searchstr = str(N) + '.dcm'
-        if (len(file1search2)>0 or len(file1search4)>0):
-            searchstr = str(N) + '.DCM'
-
-        if( len(file1search5) > 0):
-            fileN = os.path.join(imgpath,file1search5[len(file1search5) - 1])
-        else:
-            fileNsearch = [i for i in files if searchstr in i]
-            fileN = os.path.join(imgpath,fileNsearch[0])
-    else:
-        fileN = os.path.join(imgpath,fsort[0][N-1])
-
-    try:
-        imgN = pydicom.dcmread(fileN, force=True)
-    except:
-        imgN = dicom.read_file(fileN)
-
-    imgN_pos = imgN[0x20,0x32] #Image Position (Patient) for last slice
-    #Next 2 lines convert from header field with values to list of floats
-    imgN_pos = imgN_pos[0:]
-    imgN_pos = [float(i) for i in imgN_pos] #convert from list of strings to list of floats (numeric)
-
-    #Construct affine matrix for ijk to LPS transform using DICOM header information
-    aff_mat = np.zeros((4,4)) #affine matrix for ijk to LPS transform
-    aff_mat[0:3,0] = np.transpose(row_sp*np.array(y1_orient))
-    aff_mat[0:3,1] = np.transpose(col_sp*np.array(x1_orient))
-    aff_mat[0:3,2] = np.transpose((np.array(img1_pos)-np.array(imgN_pos))/(1-N))
-    aff_mat[0:3,3] = np.transpose(np.array(img1_pos))
-    aff_mat[3,3] = 1
-
-    aff_inv_mat = np.linalg.inv(aff_mat) #inverse of affine matrix for LPS to ijk transform
-
-    return aff_mat, aff_inv_mat
 
 '''
 将数据集拷贝到monailabel_dataset文件夹内
 '''
+
+
 def ready_for_monai_dataset():
     # 首先读取name_mapping.csv文件 排除非优质数据
     name_mapping_df = pd.read_csv(name_mapping_path, encoding='unicode_escape')
     # 遍历每行
     for idx, data in name_mapping_df.iterrows():
         if data['Exclude'] != 1.0:
-
-            image_file_path = os.path.join(root_path, data['Breast_subject_ID'] , data['Breast_subject_ID'] + '_ph3.nii')
-            label_file_path = os.path.join(root_path, data['Breast_subject_ID'] , data['Breast_subject_ID'] + '_seg.nii')
-            destinate_image_path = '/Users/zyc/Desktop/DESKTOP/MONAILabel_datasets/datasets/myTask01_Breast'
-            destinate_label_path = '/Users/zyc/Desktop/DESKTOP/MONAILabel_datasets/datasets/myTask01_Breast/labels/final'
+            image_file_path = os.path.join(root_path, data['Breast_subject_ID'], data['Breast_subject_ID'] + '_ph3.nii')
+            label_file_path = os.path.join(root_path, data['Breast_subject_ID'], data['Breast_subject_ID'] + '_seg.nii')
+            destinate_image_path = default_prefix2 + 'MONAILabel_datasets/myTask01_Breast'
+            destinate_label_path = default_prefix2 + 'MONAILabel_datasets/myTask01_Breast/labels/final'
             destinate_name = data['Breast_subject_ID'] + '_ph3.nii'
             shutil.copyfile(image_file_path, os.path.join(destinate_image_path, destinate_name))
             shutil.copyfile(label_file_path, os.path.join(destinate_label_path, destinate_name))
             print(destinate_name + 'Done!')
 
-if __name__ == '__main__':
-    # breast_dicom2nii()
-    # breast_dicom2nii_t2()
-    # breast_dicom2nii_dwi()
-    # resample_sitk()
-    # correct_bias()
-    # crop_mass_area()
-    # crop_mass_area_t2_or_dwi()
-    # nii2h5_seg()
-    # nii2h5_classification()
-    # feature_and_save_as_csv()
-    # slicer_test_FTV_1()
-    # slicer_test_FTV_2()
-    ready_for_monai_dataset()
 
+import cv2
+
+"""
+dirtype:proposed/deepedit 29 2 4 3 24
+029:
+    center_point = [128 - 66, 128 - 61, 23]
+    fore_points = [[128 - 58, 128 - 48, 23]]
+    back_points = [[128 - 49, 128 - 56, 23]]
+"""
+def getResultPicture(dir_type, i, label_number, fore_number, back_number, index, need_point, center_point, fore_points,
+                     back_points):
+    img_file = "D:\Desktop\MONAILabel_datasets1\myTask06_BreastCrop\Breast_Training_%03d_ph3.nii" % (i)
+    gt_file = "D:\Desktop\MONAILabel_datasets1\myTask06_BreastCrop\labels/final/Breast_Training_%03d_ph3.nii" % (i)
+    label_file = 'D:\Desktop\MONAILabel_datasets1\myTask06_BreastCrop\labels\%s_test_labels\Breast_Training_%03d_ph3.nii' % (
+    dir_type, i)
+    label_scibble_file = 'D:\Desktop\MONAILabel_datasets1\myTask06_BreastCrop\labels\%s_test_labels\Breast_Training_%03d_ph3_with_scribble.nii' % (
+    dir_type, i)
+    img = nib.load(img_file)
+    img = np.asarray(img.dataobj)
+    img = np.rot90(img)
+    img = np.fliplr(img)
+    gt = nib.load(gt_file)
+    gt = np.asarray(gt.dataobj)
+    gt = np.rot90(gt)
+    gt = np.fliplr(gt)
+    if os.path.exists(label_scibble_file):
+        label = nib.load(label_scibble_file)
+        label = np.asarray(label.dataobj)
+        label = np.rot90(label)
+        label = np.fliplr(label)
+        label_mass = np.where((label == label_number) | (label == fore_number), label_number, 0)
+        label_fore_scr = np.where(label == fore_number, label, 0)
+        label_back_scr = np.where(label == back_number, label, 0)
+    else:
+        label = nib.load(label_file)
+        label = np.asarray(label.dataobj)
+        label = np.rot90(label)
+        label_mass = np.fliplr(label)
+    # ================================================================= slice_index =================================================================
+    slice_index = index - 1
+    gt_index = gt[:, :, slice_index, None].astype(np.uint8)
+    label_mass = label_mass[:, :, slice_index, None].astype(np.uint8)
+    if os.path.exists(label_scibble_file):
+        label_fore_scr = label_fore_scr[:, :, slice_index, None].astype(np.uint8)
+        label_back_scr = label_back_scr[:, :, slice_index, None].astype(np.uint8)
+    img_index = img[:, :, slice_index, None]
+    img_index *= 255
+    img_index = img_index.astype(np.uint8)
+    plt.imshow(img_index, cmap="gray")
+    # ================================================================ cv2.findContours =================================
+    # contours, _ = cv2.findContours(gt_index, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+    # cv2.drawContours(img_index, contours, -1, (189, 183, 107), 1)
+    # plt.imshow(img_index, cmap="gray")
+    # ================================================================= canny ================================================================
+    edges = cv2.Canny(gt_index, 0, 2)
+    plt.plot(np.nonzero(edges)[1], np.nonzero(edges)[0], 'gd', markersize=2)
+    edges2 = cv2.Canny(label_mass, 0, 2)
+    plt.plot(np.nonzero(edges2)[1], np.nonzero(edges2)[0], 'yd', markersize=2)
+    # ================================================================= meature =================================================================
+    # img_index = img_index.squeeze()
+    # gt_index = gt_index.squeeze()
+    # contours = measure.find_contours(gt_index, 0.5)
+    # for c in contours:
+    #     c = np.around(c).astype(np.int)
+    #     img_index[c[:, 0], c[:, 1]] = np.array((255))
+    # cv2.imwrite('test.png', img_index)
+    # ================================================================= point =================================================================
+    if need_point:
+        plt.plot(center_point[0], center_point[1], 'o', markersize=5, color='cyan')
+        for fore_point in fore_points:
+            plt.plot(fore_point[0], fore_point[1], 'o', markersize=3, color='cyan')
+        for back_point in back_points:
+            plt.plot(back_point[0], back_point[1], 'o', markersize=4, color='orangered')
+    # ================================================================= scribbles ================================================================
+    if os.path.exists(label_scibble_file):
+        plt.plot(np.nonzero(label_fore_scr)[1], np.nonzero(label_fore_scr)[0], 'o', markersize=2, alpha=0.5,
+                 color='blue')
+        plt.plot(np.nonzero(label_back_scr)[1], np.nonzero(label_back_scr)[0], 'o', markersize=2, alpha=0.5,
+                 color='red')
+    plt.axis('off')
+    plt.savefig(
+        'D:\Desktop\MONAILabel_datasets1\myTask06_BreastCrop\labels\%s_test_labels\Breast_Training_%03d_ph3.png' % (
+        dir_type, i)
+        , bbox_inches='tight', pad_inches=-0.1)
+    plt.show()
+
+
+def getResultPictureForMI(NAME, index, extreme_points, back_points, CM):
+    img_path = "D:\Desktop\MONAILabel_datasets1\myTask06_Breast\MIDeepSeg_image\%s_slice%d.png" % (NAME, index)
+    gt_file = "D:\Desktop\MONAILabel_datasets1\myTask06_Breast\labels/final\%s.nii" % (NAME)
+    label_file = "D:\Desktop\MONAILabel_datasets1\myTask06_Breast\labels\MIDeepSeg_test_labels\%s_result.png" % (NAME)
+    save_file = "D:\Desktop\MONAILabel_datasets1\myTask06_Breast\labels\MIDeepSeg_test_labels\%s.png" % (NAME)
+    # 画img
+    img = np.asarray(Image.open(img_path))
+    img = img[CM[1] - 64:CM[1] + 64, CM[0] - 64:CM[0] + 64, 0]
+    plt.imshow(img, cmap="gray")
+    # 画gt轮廓
+    gt = nib.load(gt_file)
+    gt = np.asarray(gt.dataobj)
+    gt = np.rot90(gt)
+    gt = np.fliplr(gt)
+    slice_index = index - 1
+    gt_index = gt[:, :, slice_index].astype(np.uint8)
+    # 画label轮廓
+    label_mass = np.asarray(Image.open(label_file))
+    # ================================================================= canny ================================================================
+    edges = cv2.Canny(gt_index, 0, 2)
+    edges = edges[CM[1] - 64:CM[1] + 64, CM[0] - 64:CM[0] + 64]
+    plt.plot(np.nonzero(edges)[1], np.nonzero(edges)[0], 'gd', markersize=2)
+    edges2 = cv2.Canny(label_mass, 0, 2)
+    edges2 = edges2[CM[1] - 64:CM[1] + 64, CM[0] - 64:CM[0] + 64]
+    plt.plot(np.nonzero(edges2)[1], np.nonzero(edges2)[0], 'yd', markersize=2)
+    # 画极值点
+    xs = CM[0] - 64
+    ys = CM[1] - 64
+    for point in extreme_points:
+        plt.plot(point[0] - xs, point[1] - ys, 'mo', markersize=4)
+    for back_point in back_points:
+        if back_point[0] - xs > 0 and back_point[1] - ys > 0 and back_point[0] - xs < 128 and back_point[1] - ys < 128:
+            plt.plot(back_point[0] - xs, back_point[1] - ys, 'o', markersize=4, color='orangered')
+    plt.axis('off')
+    plt.savefig(save_file, bbox_inches='tight', pad_inches=-0.1)
+    plt.show()
+
+
+def getScribbleData():
+    # file_data = pd.read_csv('C:/Users/10099/Desktop/proposes_Dataset - 副本.csv')
+    # file_data = pd.read_csv('C:/Users/10099/Desktop/econet_Dataset - 副本.csv')
+    file_data = pd.read_csv('C:/Users/10099/Desktop/graphcuts_Dataset - 副本.csv')
+    temp_y = []
+    start_index = 400
+    end_index = start_index + 100
+    add_data = []
+    save_path = 'C:/Users/10099/Desktop/testtest3.csv'
+    for idx, data in file_data.iterrows():
+        if data[0] >= start_index:
+            if data[0] < end_index:
+                temp_y.append(data[1])
+            else:
+                add_data.append({'index': (start_index + end_index) / 2, 'value': np.average(temp_y)})
+                start_index = end_index
+                end_index = start_index + 100
+                print('new start:', start_index)
+                temp_y = []
+                temp_y.append(data[1])
+    df = pd.DataFrame(add_data)
+    df.to_csv(save_path, index=None, header=None)
+
+
+"""
+dirtype:proposed/deepedit 29 2 4 3 24
+029:
+    center_point = [128 - 66, 128 - 61, 23]
+    fore_points = [[128 - 58, 128 - 48, 23]]
+    back_points = [[128 - 49, 128 - 56, 23]]
+"""
+
+
+def getResultPictureForAbation(flag, direction, i, label_number, fore_number, back_number, index, paint_scribbles = 0):
+    img_file = "D:\Desktop\MONAILabel_datasets1\myTask07_BreastCrop\Breast_Training_%03d_ph3_128x128x96.nii" % (i)
+    gt_file = "D:\Desktop\MONAILabel_datasets1\myTask07_BreastCrop\labels/final/Breast_Training_%03d_ph3_128x128x96.nii" % (i)
+    label_file = 'D:\Desktop\MONAILabel_datasets1\myTask07_BreastCrop\labels\logits\Breast_Training_%03d_ph3_128x128x96_final_label.nii' % (i)
+    label_scibble_file = 'D:\Desktop\MONAILabel_datasets1\myTask07_BreastCrop\labels\logits\Breast_Training_%03d_ph3_128x128x96_with_scribble.nii' % (i)
+    label_final = 'D:\Desktop\MONAILabel_datasets1\myTask07_BreastCrop\labels\logits\Breast_Training_%03d_ph3_128x128x96_final.nii' % (i)
+    img = nib.load(img_file)
+    img = np.asarray(img.dataobj)
+    gt = nib.load(gt_file)
+    gt = np.asarray(gt.dataobj)
+    if flag == 0:
+        label = nib.load(label_scibble_file)
+        label = np.asarray(label.dataobj)
+        label_mass = np.where((label == label_number)|(label == back_number), label_number, 0)
+        label_fore_scr = np.where(label == fore_number, label, 0)
+        label_back_scr = np.where(label == back_number, label, 0)
+    else:
+        label = nib.load(label_scibble_file)
+        label = np.asarray(label.dataobj)
+        label_final = nib.load(label_final)
+        label_final = np.asarray(label_final.dataobj)
+        label_mass = np.where(label_final == label_number, label_number, 0)
+        # ================================================================= slice_index =================================================================
+    if direction == 0:
+        img = np.rot90(img)
+        img = np.fliplr(img)
+        gt = np.rot90(gt)
+        gt = np.fliplr(gt)
+        label_mass = np.rot90(label_mass)
+        label_mass = np.fliplr(label_mass)
+        slice_index = index - 1
+        gt_index = gt[:, :, slice_index, None].astype(np.uint8)
+        label_mass = label_mass[:, :, slice_index, None].astype(np.uint8)
+        if flag == 0:
+            label_back_scr = np.rot90(label_back_scr)
+            label_back_scr = np.fliplr(label_back_scr)
+            label_fore_scr = label_fore_scr[:, :, slice_index, None].astype(np.uint8)
+            label_back_scr = label_back_scr[:, :, slice_index, None].astype(np.uint8)
+        img_index = img[:, :, slice_index, None]
+        plt.imshow(img_index, cmap="gray")
+    elif direction == 1:
+        gt = np.where((label == 2) | (label == label_number) | (label == fore_number), 2, 0)
+        slice_index = index - 1
+        gt_index = gt[:, slice_index, :, None].astype(np.uint8)
+        label_mass = label_mass[:, slice_index, :, None].astype(np.uint8)
+        if flag == 0:
+            label_fore_scr = label_fore_scr[:, slice_index, :, None].astype(np.uint8)
+            label_back_scr = label_back_scr[:, slice_index, :, None].astype(np.uint8)
+        img_index = img[:, slice_index, :, None]
+        img_index = np.rot90(img_index)
+        img_index = np.fliplr(img_index)
+        gt_index = np.rot90(gt_index)
+        gt_index = np.fliplr(gt_index)
+        label_mass = np.rot90(label_mass)
+        label_mass = np.fliplr(label_mass)
+        plt.imshow(img_index, cmap="gray")
+    else:
+        gt = np.where((label == 2) | (label == label_number) | (label == fore_number), 2, 0)
+        slice_index = index - 1
+        gt_index = gt[slice_index, :, :, None].astype(np.uint8)
+        label_mass = label_mass[slice_index, :, :, None].astype(np.uint8)
+        if flag == 0:
+            label_fore_scr = label_fore_scr[slice_index, :, :, None].astype(np.uint8)
+            label_back_scr = label_back_scr[slice_index, :, :, None].astype(np.uint8)
+            label_fore_scr = np.rot90(label_fore_scr)
+            label_fore_scr = np.fliplr(label_fore_scr)
+        img_index = img[slice_index, :, :, None]
+        img_index = np.rot90(img_index)
+        img_index = np.fliplr(img_index)
+        gt_index = np.rot90(gt_index)
+        gt_index = np.fliplr(gt_index)
+        label_mass = np.rot90(label_mass)
+        label_mass = np.fliplr(label_mass)
+
+        plt.imshow(img_index, cmap="gray")
+    # ================================================================= canny ================================================================
+    edges = cv2.Canny(gt_index, 0, 2)
+    plt.plot(np.nonzero(edges)[1], np.nonzero(edges)[0], 'gd', markersize=2)
+    edges2 = cv2.Canny(label_mass, 0, 2)
+    plt.plot(np.nonzero(edges2)[1], np.nonzero(edges2)[0], 'yd', markersize=2)
+    # ================================================================= scribbles ================================================================
+    if flag == 0 and paint_scribbles == 1:
+        plt.plot(np.nonzero(label_fore_scr)[1], np.nonzero(label_fore_scr)[0], 'o', markersize=3, alpha=0.8,
+                 color='blue')
+        plt.plot(np.nonzero(label_back_scr)[1], np.nonzero(label_back_scr)[0], 'o', markersize=2, alpha=0.5,
+                 color='red')
+
+    plt.axis('off')
+    plt.savefig(
+        'D:\Desktop\MONAILabel_datasets1\myTask07_BreastCrop\labels\logits\\flag_%s_direction_%s_scribbles_%s.png' % (
+        flag, direction, paint_scribbles)
+        , bbox_inches='tight', pad_inches=-0.1)
+    plt.show()
+
+
+if __name__ == '__main__':
+    '''
+    dicom->nii
+    '''
+    breast_dicom2nii()
+    breast_dicom2nii_t2()
+    breast_dicom2nii_dwi()
+    breast_dicom2nii_ph0()
+    '''
+    重采样
+    '''
+    resample_sitk()
+    '''
+    校正
+    '''
+    correct_bias()
+    '''
+    根据质心位置裁剪
+    '''
+    crop_mass_area()
+    crop_mass_area_t2_or_dwi()
+    '''
+    nii->h5（废弃）
+    '''
+    nii2h5_seg()
+    nii2h5_classification()
+    '''
+    按照monai文件夹格式准备数据
+    '''
+    ready_for_monai_dataset()
+    '''
+    Breast_Training_029画对比图
+    '''
+    # center_point = [128 - 66, 128 - 61, 23]
+    # fore_points = [[128 - 58, 128 - 48, 23]]
+    # back_points = [[128 - 49, 128 - 56, 23]]
+    # getResultPicture('proposed', 29, 2, 4, 3, 24, need_point=True, center_point=center_point, fore_points=fore_points, back_points=back_points)
+    # getResultPicture('deepedit', 29, -1, -1, -1, 24, need_point=True, center_point=center_point, fore_points=fore_points, back_points=back_points)
+    # getResultPicture('econet', 29, 1, 3, 2, 24, need_point=False, center_point=center_point, fore_points=fore_points, back_points=back_points)
+    # getResultPicture('graphcuts', 29, 2, 4, 3, 24, need_point=False, center_point=center_point, fore_points=fore_points, back_points=back_points)
+    # CM = [512-401, 512-377, 41]  # -> (64, 64)
+    # extrem_points = [
+    #     [99, 124],
+    #     [109, 124],
+    #     # [119, 126],
+    #     [114, 135],
+    #     [117, 153],
+    #     [108, 145]
+    # ]
+    # back_points = [
+    #     [119, 145], [107, 151]
+    # ]
+    # getResultPictureForMI("Breast_Training_029_ph3", 41, extrem_points, back_points, CM)
+
+    '''
+        Breast_Training_022画对比图
+    '''
+    # center_point = [128 - 66, 128 - 64, 24]
+    # fore_points = []
+    # back_points = []
+    # getResultPicture('proposed', 22, 2, 4, 3, 25, need_point=True, center_point=center_point, fore_points=fore_points, back_points=back_points)
+    # getResultPicture('deepedit', 22, -1, -1, -1, 25, need_point=True, center_point=center_point, fore_points=fore_points, back_points=back_points)
+    # getResultPicture('econet', 22, 1, 3, 2, 25, need_point=False, center_point=center_point, fore_points=fore_points, back_points=back_points)
+    # getResultPicture('graphcuts', 22, 2, 4, 3, 25, need_point=False, center_point=center_point, fore_points=fore_points, back_points=back_points)
+    # CM = [512 - 102, 512 - 281, 50]  # -> (64, 64)
+    # extrem_points = [
+    #     [410, 223], [403, 231], [406, 237], [413, 233]
+    # ]
+    # back_points = [
+    #     [404, 222]
+    # ]
+    # getResultPictureForMI("Breast_Training_022_ph3", 51, extrem_points, back_points, CM)
+
+    '''
+        Breast_Training_288画对比图
+    '''
+    # center_point = [128 - 62, 128 - 65, 26]
+    # fore_points = [[128 - 69, 128 - 70, 26], [128 - 55, 128 - 59, 26]]
+    # back_points = [[128 - 53, 128 - 71, 26]]
+    # getResultPicture('proposed', 288, 2, 4, 3, 27, need_point=True, center_point=center_point, fore_points=fore_points, back_points=back_points)
+    # getResultPicture('deepedit', 288, -1, -1, -1, 27, need_point=True, center_point=center_point, fore_points=fore_points, back_points=back_points)
+    # getResultPicture('econet', 288, 1, 3, 2, 27, need_point=False, center_point=center_point, fore_points=fore_points, back_points=back_points)
+    # getResultPicture('graphcuts', 288, 2, 4, 3, 27, need_point=False, center_point=center_point, fore_points=fore_points, back_points=back_points)
+    # CM = [512 - 380, 512 - 228, 88]  # -> (64, 64)
+    # extrem_points = [
+    #     (123, 264),
+    #     (114, 273),
+    #     (124, 286),
+    #     (142, 303),
+    #     (145, 287),
+    #     (138, 278),
+    #     (135, 271),
+    #     (141, 299)
+    # ]
+    # back_points = [
+    #     (129, 299), (142, 272), (120, 288)
+    # ]
+    # getResultPictureForMI("Breast_Training_288_ph3", 91, extrem_points, back_points, CM)
+
+    # getScribbleData()
+    '''
+    消融实验画图
+    '''
+    # getResultPictureForAbation(flag=0, direction=0, i=21, label_number=3, fore_number=5, back_number=4, index=32)
+    # getResultPictureForAbation(flag=0, direction=1, i=21, label_number=3, fore_number=5, back_number=4, index=62)
+    # getResultPictureForAbation(flag=0, direction=2, i=21, label_number=3, fore_number=5, back_number=4, index=64)
+
+    getResultPictureForAbation(flag=0, direction=0, i=21, label_number=3, fore_number=5, back_number=4, index=32, paint_scribbles=1)
+    getResultPictureForAbation(flag=0, direction=1, i=21, label_number=3, fore_number=5, back_number=4, index=62, paint_scribbles=1)
+    getResultPictureForAbation(flag=0, direction=2, i=21, label_number=3, fore_number=5, back_number=4, index=64, paint_scribbles=1)
+    #
+    # getResultPictureForAbation(flag=1, direction=0, i=21, label_number=3, fore_number=5, back_number=4, index=32)
+    # getResultPictureForAbation(flag=1, direction=1, i=21, label_number=3, fore_number=5, back_number=4, index=62)
+    # getResultPictureForAbation(flag=1, direction=2, i=21, label_number=3, fore_number=5, back_number=4, index=64)

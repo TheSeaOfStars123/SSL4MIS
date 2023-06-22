@@ -2,6 +2,10 @@
   @ Date: 2022/3/24 10:29
   @ Author: Zhao YaChen
 '''
+import os
+os.environ["KMP_DUPLICATE_LIB_OK"]="TRUE"
+
+
 import pandas as pd
 import nibabel as nib
 import numpy as np
@@ -11,6 +15,7 @@ from monai.config import KeysCollection
 from monai.data import Dataset, DataLoader
 from scipy import ndimage
 from torchvision.utils import make_grid
+
 
 '''
 将多模态的数据以子图的方式展示在一张图像上
@@ -108,36 +113,77 @@ from torchvision.utils import make_grid
 """
 使用monai-1.0.0运行 需要切换虚拟环境py37_torch运行
 """
-import os
-os.environ["KMP_DUPLICATE_LIB_OK"]  =  "TRUE"
+
 from monai.transforms import LoadImaged, AddChanneld, SpatialCropD, Compose, ScaleIntensityd, EnsureTyped, \
     MapTransform, SpatialCrop
 from skimage.util import montage
 
 '''
-对单个nii文件进行crop
+对文件夹中nii文件进行crop
 '''
-def monai_crop():
-    file = {}
-    file['image'] = 'D:\Desktop\BREAST\BREAST/breast-dataset-training-validation\Breast_TrainingData\Breast_Training_005\Breast_Training_005_ph3.nii'
-    file['label'] = 'D:\Desktop\BREAST\BREAST/breast-dataset-training-validation\Breast_TrainingData\Breast_Training_005\Breast_Training_005_seg.nii'
+def dir_crop(dir_path):
+    dir_name = dir_path.split('\\')[-1]
+    for file_list in os.listdir(dir_path):
+        file = {}
+        file['image'] = os.path.join(dir_path, file_list)
+        file['label'] = os.path.join(dir_path, '../final', file_list)
+        data_crop = monai_crop(file)
+        # save
+        save_path = os.path.join(dir_path, '../', dir_name + 'crop', file_list)
+        nib.save(nib.Nifti1Image(data_crop['image'].squeeze().numpy(), np.eye(4)),
+                 save_path)  # (1, 256, 256, 30)
+        nib.save(nib.Nifti1Image(data_crop['label'].squeeze().numpy(), np.eye(4)),
+                 save_path)  # (1, 256, 256, 30)
+
+'''
+对单个nii文件进行crop
+file = {}
+file['image'] = 'D:\Desktop\MONAILabel_datasets1\myTask03_Breast\labels/test_labels/Breast_Training_029_ph3.nii'
+file['label'] = 'D:\Desktop\MONAILabel_datasets1\myTask03_Breast\labels/final/Breast_Training_029_ph3.nii'
+
+# 保存
+    nib.save(nib.Nifti1Image(data_crop['image'].squeeze().numpy(), np.eye(4)), 'D:\Desktop\MONAILabel_datasets1\myTask03_Breast\labels/test_labels\Breast_Training_029_monai_crop.nii')# (1, 256, 256, 30)
+    nib.save(nib.Nifti1Image(data_crop['label'].squeeze().numpy(), np.eye(4)), 'D:\Desktop\MONAILabel_datasets1\myTask03_Breast\labels/final\Breast_Training_029_monai_crop.nii')# (1, 256, 256, 30)
+
+'''
+def monai_crop(file):
     data_dicts = []
     data_dicts.append(file)
     # 加载一个图像
     loader = LoadImaged(keys=["image", "label"], dtype=np.float32)
     sample_data = loader(data_dicts[0])
     # 计算质心
-    CM = ndimage.measurements.center_of_mass(sample_data['label'].squeeze(axis=0).numpy())
+    CM = list(map(int, ndimage.measurements.center_of_mass(sample_data['label'].squeeze(axis=0).numpy())))
     add_channel = AddChanneld(keys=["image", "label"])
     sample_data = add_channel(sample_data)
-    crop = SpatialCropD(keys=["image", "label"], roi_center=CM, roi_size=(128, 128, 48))
+    ORI_SHAPE = sample_data['label'].squeeze(axis=0).shape
+    # 定义偏移量
+    offsetX = 64
+    offsetY = 64
+    offsetZ = 48
+    if CM[0] - offsetX < 0:
+        delta = 0 - (CM[0] - offsetX)
+        CM[0] += delta
+    elif CM[0] + offsetX > ORI_SHAPE[0]:
+        delta = CM[0] + offsetX - ORI_SHAPE[0]
+        CM[0] -= delta
+    if CM[1] - offsetY < 0:
+        delta = 0 - (CM[1] - offsetY)
+        CM[1] += delta
+    elif CM[1] + offsetY > ORI_SHAPE[1]:
+        delta = CM[1] + offsetY - ORI_SHAPE[1]
+        CM[1] -= delta
+    if CM[2] - offsetZ < 0:
+        delta = 0 - (CM[2] - offsetZ)
+        CM[2] += delta
+    elif CM[2] + offsetZ > ORI_SHAPE[2]:
+        delta = CM[2] + offsetZ - ORI_SHAPE[2]
+        CM[2] -= delta
+    print(CM)
+    crop = SpatialCropD(keys=["image", "label"], roi_center=CM, roi_size=(128, 128, 96))
     data_crop = crop(sample_data)
     print(data_crop['image'].shape)
-    # 保存
-    nib.save(nib.Nifti1Image(data_crop['image'].squeeze().numpy(), np.eye(4)), 'D:\Desktop\BREAST\BREAST/breast-dataset-training-validation'
-                                                   '\Breast_TrainingData\Breast_Training_005\Breast_Training_005_ph3_monai_crop.nii')# (1, 256, 256, 30)
-    nib.save(nib.Nifti1Image(data_crop['label'].squeeze().numpy(), np.eye(4)), 'D:\Desktop\BREAST\BREAST/breast-dataset-training-validation'
-                                                   '\Breast_TrainingData\Breast_Training_005\Breast_Training_005_seg_monai_crop.nii')# (1, 256, 256, 30)
+    return data_crop
 
 '''
 根据breast_name_mapping.csv文件中的数据，进行mass区域展示，保存为montage形式
@@ -303,8 +349,12 @@ def save_center_as_pic():
         plt.savefig(fig_name + '_v3.png')
         # plt.show()
 
+
+
 if __name__ == '__main__':
     # show_data_multimodal
     # monai_crop()
     # save_as_montage()
-    save_center_as_pic()
+    # save_center_as_pic()
+    dir_crop('D:\Desktop\BREAST\BREAST/breast-dataset-training-validation\Breast_TrainingData\\Breast_Training_021')
+
